@@ -1,0 +1,84 @@
+# --- Raw source material -------------------------------------------------
+# Policy (sources/README.md): raw PDFs live in the Google Drive inbox folder
+# `inference-engineer-inbox`. Only the metadata stubs in sources/ are tracked.
+*.pdf
+*.epub
+*.mobi
+*.djvu
+
+# --- Figures --------------------------------------------------------------
+# SVGs and the 2x PNGs ARE tracked on purpose: SVG for editing, PNG for
+# Substack (its pipeline doesn't handle SVG reliably). See drafts/figures/README.md.
+# Only scratch renders are ignored.
+drafts/figures/*-scratch.*
+drafts/figures/tmp/
+
+# --- Python (figure generation, benchmark scripts) ------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.python-version
+*.egg-info/
+.ipynb_checkpoints/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# --- Rust (Phase 6 engine, Weeks 25-30) -----------------------------------
+target/
+**/*.rs.bk
+Cargo.lock.orig
+
+# --- Model weights and caches ---------------------------------------------
+# Never commit checkpoints; they belong in the HF cache or a local models dir.
+*.safetensors
+*.gguf
+*.bin
+*.pt
+*.pth
+*.onnx
+models/
+.cache/
+hf_cache/
+
+# --- Benchmark output ------------------------------------------------------
+# KVScope JSON reports ARE committed (every published measurement must be
+# reproducible - see planning/series-plan.md, Companion repos). Raw traces and
+# profiler dumps are not.
+*.nsys-rep
+*.qdrep
+*.ncu-rep
+*.sqlite
+traces/
+profiles/
+benchmarks/raw/
+
+# --- Secrets ---------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.*
+.netrc
+
+# --- Editors and OS --------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# --- Agent scratch ---------------------------------------------------------
+.claude/settings.local.json
