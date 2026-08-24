@@ -69,5 +69,5 @@ def build(highlight=None, fname="fig4-anchor.svg"):
     s+=f'<text x="{X0}" y="{FY+30}" font-size="14.5" fill="{INK2}">Keep this picture. Every week from here is one of these five moves, and we will come back to this bar to say which.</text>'
     return s+"</svg>"
 
-open("fig4-anchor.svg","w").write(build())
+open("fig4-anchor.svg", "w", encoding="utf-8").write(build())
 print("anchor written")

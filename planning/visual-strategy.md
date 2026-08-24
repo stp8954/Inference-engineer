@@ -15,10 +15,13 @@ that budget, each tagged with the week that covers it.
 
 **Why the byte budget and not an attention diagram.** The intuitive anchor is a canonical
 attention/transformer figure, since so many optimizations sound attention-flavored. That would be a
-mistake: at decode, attention is *compute*-bound (AI ≈ N); the starvation is weight reloading. An
-attention-centred anchor would reinforce, twenty times over, exactly the misconception Week 2 exists
-to correct. The byte budget gets the anchoring benefit with the correct mental model — and it makes
-the series legible as a campaign against a handful of terms rather than a bag of unrelated tricks.
+mistake: during low-batch decode, repeatedly moving model weights is often the largest byte term, and
+KV traffic grows with context until it can become material or dominant. Whether a particular
+attention kernel is compute- or bandwidth-bound depends on context length, head geometry, batching,
+hardware, and implementation; Week 2 measures that rather than declaring a universal regime. An
+attention-centred anchor would still hide the full-system byte budget. This figure gets the anchoring
+benefit with the right mental model—and makes the series legible as a campaign against a handful of
+terms rather than a bag of unrelated tricks.
 
 **The five moves** (this taxonomy is the series' spine):
 1. **Shrink the bytes** — quantization (W10–11), GQA/MLA (W13), sliding window & SSMs (W13, W19)
@@ -52,7 +55,7 @@ time* is the thing being taught. If a still image can carry it, use a still imag
 has 30 deep dives, a weekly digest, KVScope, and a Rust engine to ship. Systematically animating
 every post is the most plausible way this series dies around Week 6.
 
-Budget: **4–6 animations across the whole 30 weeks.** Treat each one as a distribution bet, not a
+Budget: **4–6 animations across the whole 30-installment arc.** Treat each one as a distribution bet, not a
 comprehension aid — spend them on the posts that most need to travel.
 
 ## Animation shortlist (ranked)
@@ -105,6 +108,7 @@ series.
 
 ## Sequencing
 
-Don't touch animation until the series has shipped ~4 posts and the cadence is proven. First
-animation candidate: the KV cache, for Week 3 — but only if Weeks 1–3 are already drafted and the
-buffer is intact. If the buffer is thin, ship the static figure and revisit.
+Don't touch animation until four deep dives are finished, the fortnightly production rhythm is
+proven, and at least two additional posts remain buffered. Week 3 ships with a static KV-cache figure
+by default; the animation can be added to the web post later as a distribution asset. Build it before
+launch only if Weeks 1–4 are complete, the Rust feasibility gate has passed, and the buffer is intact.

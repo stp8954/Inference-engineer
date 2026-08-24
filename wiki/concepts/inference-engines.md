@@ -15,6 +15,15 @@ Beyond the big three: **TGI** trades leading-edge features for operational matur
 
 **Selection heuristic:** no single best engine — match to workload, then optimize. Chat/general → vLLM; structured/JSON → SGLang; lowest latency on frozen models → TensorRT-LLM or Groq; bursty → Modal; enterprise support → TGI; local/private → llama.cpp or Ollama.
 
+## Learning implementations
+
+**Production engines are not pedagogical.** When building from scratch (Week 25+), reference implementations that prioritize clarity:
+
+- **tiny-vllm (Maczan)** — C++/CUDA course + working engine. Theory-first approach: floating-point math, GPU memory, then CUDA kernel development, batching, paged attention. Minimal design (Llama 3.2 1B reference) covers the full pipeline without production complexity. Source: sources/2026-08-24-maczan-tiny-vllm.md.
+- **YALM (Chan)** — C++/CUDA performance progression. Same goal, different narrative: start at 0.6 tok/s (naive loop), optimize through threading, quantization, kernel fusion to 63.8 tok/s. See sources/2026-08-24-chan-yalm.md.
+
+Both are C++/CUDA; architectural patterns (batching, paged KV, attention kernels, memory management) transfer to Rust or other languages.
+
 ## Key numbers
 - vLLM ≈ 2× the GitHub stars of SGLang and TensorRT-LLM combined (at book publication, Jan 2026). [sourced] — Kiely §4.3.1.
 - TensorRT-LLM is typically **1.5–2× faster per token than vLLM** on the same model and hardware (up to ~2× best case), paid for with minutes-long compiles, NVIDIA-only support, and no image/video models. [sourced] — Vizuara §20.4.

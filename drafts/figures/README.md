@@ -23,8 +23,8 @@ same figure with its own attack point lit.
 | File | Where it goes | Job |
 |---|---|---|
 | `fig1-the-loop` | after "The loop" section opener | The mental model: autoregression as a cycle, with the return arrow as the heaviest line on the page. |
-| `fig2-time-budget` | inside "The napkin math", right after the 4.8 ms / 16 µs numbers | **The screenshot moment.** One decode step drawn to scale — the compute is a 3-pixel sliver. |
-| `fig3-bandwidth-ceilings` | in the "one formula travels" bullet list | Shows the formula generalizing across hardware; sets up quantization as a bandwidth story. |
+| `fig2-time-budget` | inside "The napkin math", right after the 4.8 ms / 16 µs lower bounds | **The screenshot moment.** Peak resource bounds drawn to scale, explicitly not a measured execution timeline. |
+| `fig3-bandwidth-ceilings` | in the "one formula travels" bullet list | Shows the idealized weights-only ceiling across exact hardware configurations; sets up quantization as a bandwidth story without promising realized speedup. |
 
 Fig 2 is the one to lead with on X — it is the whole post in one image.
 

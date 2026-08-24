@@ -12,7 +12,7 @@ How the `wiki/` knowledge base is structured and how an LLM (or human) should ma
 
 - `wiki/concepts/<slug>.md` — one page per technique or idea (kv-cache, speculative-decoding, …). Sections: **What it is** (2–4 paragraphs), **Key numbers** (with provenance links), **Open questions**, **Sources**, **Series mapping** (which week(s) cover it, link to draft/post when it exists).
 - `wiki/entities/<slug>.md` — one page per project, company, or hardware platform (vllm, sglang, kvscope, …). Sections: **What it is**, **Timeline** (dated notable releases/events, append-only), **Relation to the series**, **Sources**.
-- `wiki/claims/<slug>.md` — quantitative claims worth citing in posts, one file per tight topic (e.g. `decode-bandwidth-ceilings.md`). Each claim is one bullet: the claim, the number, the exact source (paper + table/section, or benchmark run), date recorded, and a confidence tag: `[verified]` (we reproduced it), `[sourced]` (primary source, not reproduced), `[hearsay]` (secondary source — needs upgrade before use in a post).
+- `wiki/claims/<slug>.md` — quantitative claims worth citing in posts, one file per tight topic (e.g. `decode-bandwidth-ceilings.md`). Each claim is one bullet: the claim, the number, the exact source and locator, date recorded, and a confidence tag: `[verified]` (we reproduced it and committed the benchmark contract plus raw artifact), `[sourced]` (supported by the most authoritative available source but not reproduced), `[hearsay]` (secondary or indirect source — needs upgrade before use as a plain quantitative claim). Appropriate `[sourced]` evidence includes papers for algorithms, official documentation/source/RFCs for engine behavior, and vendor specifications for hardware; it is not limited to papers.
 
 ## Navigation files
 
@@ -21,13 +21,13 @@ How the `wiki/` knowledge base is structured and how an LLM (or human) should ma
 
 ## Operations
 
-- **Ingest**: read the source → create its `sources/` stub → update every relevant concept/entity/claims page (a typical paper touches 3–10 pages) → update `index.md` → append to `log.md` → commit with message `ingest: <source title>`.
+- **Ingest**: read the source → create its `sources/` stub → update every relevant concept/entity/claims page (a typical paper touches 3–10 pages) → update `index.md` → append to `log.md` → commit with message `ingest: <source title>`. Use the source closest to the claim: paper, official documentation, source/RFC, vendor specification, release artifact, or committed benchmark run. Secondary analysis may add context but cannot be the sole support for a plain quantitative claim.
 - **Query**: when answering from the wiki, cite wiki pages; if the synthesis is durable (e.g., "everything we know about MLA for Week 13"), file it as a new page rather than losing it to chat history.
 - **Lint**: periodically check for contradictions, stale claims (esp. `[hearsay]` older than a month), orphan pages, and missing series mappings. Log as `LINT`.
 
 ## Conventions
 
 - Relative links between pages (`../entities/vllm.md`) so the wiki browses on GitHub and in Obsidian.
-- Every number that could appear in a blog post must trace to a claims entry. Posts cite claims; claims cite sources. This provenance chain is what licenses the series' plainly-stated confidence (see `planning/series-plan.md`, Voice section).
+- Every number that could appear in a blog post must trace to a claims entry. Posts cite claims; claims cite sources. A `[verified]` benchmark claim also links the raw report and records the pinned model, precision, hardware/software environment, workload, sampling, warm-up/repetition policy, and reported statistic. This provenance chain is what licenses the series' plainly-stated confidence (see `planning/series-plan.md`, Voice section).
 - Blog workflow: `drafts/week-NN-slug.md` → published → move final text to `posts/week-NN-slug.md` with the Substack URL in front-matter; add a changelog section at the bottom of the post file for post-publication corrections.
 - Commits from cloud sessions push directly; commits from home sessions go through the local clone. Always `git pull --rebase` before starting an ingest.

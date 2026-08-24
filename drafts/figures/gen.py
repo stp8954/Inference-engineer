@@ -17,7 +17,7 @@ s+=f'<text x="40" y="46" font-size="21" font-weight="600" fill="{INK}">The loop<
 s+=f'<text x="40" y="72" font-size="15" fill="{INK2}">Everything we call an "inference engine" is orchestration wrapped around this cycle.</text>'
 
 boxes=[(40,"tokens so far","the whole sequence,\nevery time"),
-       (280,"forward pass","32–80 transformer\nlayers"),
+       (280,"forward pass","many transformer layers"),
        (520,"logits","one score per token\nin the vocabulary"),
        (760,"sample","temperature,\ntop-p → one token")]
 BY,BW,BH=120,200,96
@@ -38,58 +38,58 @@ s+=(f'<path d="M 860 {BY+BH} L 860 300 Q 860 320 840 320 L 160 320 Q 140 320 140
 s+=f'<rect x="392" y="304" width="216" height="30" rx="6" fill="{SURF}"/>'
 s+=f'<text x="500" y="325" font-size="14.5" font-weight="600" text-anchor="middle" fill="{ORANGE}">append it, and do it all again</text>'
 
-s+=f'<text x="40" y="378" font-size="13.5" fill="{INK2}">No plan. No lookahead. No revision. A 2,000-word essay is 2,000+ passes through this loop,</text>'
-s+=f'<text x="40" y="398" font-size="13.5" fill="{INK2}">each one conditioned only on what has already been written.</text>'
+s+=f'<text x="40" y="378" font-size="13.5" fill="{INK2}">No finished-answer buffer. Standard decoding commits one generated token per pass through this loop,</text>'
+s+=f'<text x="40" y="398" font-size="13.5" fill="{INK2}">each one conditioned on what has already been written.</text>'
 
 s+=(f'<defs><marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">'
     f'<path d="M 0 0 L 10 5 L 0 10 z" fill="{MUTED}"/></marker>'
     f'<marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">'
     f'<path d="M 0 0 L 10 5 L 0 10 z" fill="{ORANGE}"/></marker></defs>')
-open("fig1-the-loop.svg","w").write(s+"</svg>")
+open("fig1-the-loop.svg", "w", encoding="utf-8").write(s+"</svg>")
 
 # ─────────────────────────────────────────────────────────────
-# FIG 2 — the decode-step time budget (the screenshot moment)
+# FIG 2 — peak-rate lower bounds for one decode step
 # ─────────────────────────────────────────────────────────────
 W,H=1000,398
 s=head(W,H)
-s+=f'<text x="40" y="46" font-size="21" font-weight="600" fill="{INK}">One decode step, drawn to scale</text>'
-s+=f'<text x="40" y="72" font-size="15" fill="{INK2}">8B model, BF16, batch size 1, H100 SXM. The bar is one token.</text>'
+s+=f'<text x="40" y="46" font-size="21" font-weight="600" fill="{INK}">Two peak-rate lower bounds, drawn to scale</text>'
+s+=f'<text x="40" y="72" font-size="15" fill="{INK2}">8B dense model, BF16, batch size 1, H100 SXM. This is not a measured timeline.</text>'
 
 X0,BY,BW,BH=40,120,920,66
 s+=f'<rect x="{X0}" y="{BY}" width="{BW}" height="{BH}" rx="5" fill="{BLUE}"/>'
-# compute slice: 16 us / 4816 us = 0.33% -> 3.05px. Draw at true scale.
+# compute-bound width relative to the weight-read bound: 16 us / 4816 us = 0.33%.
 cw=BW*(16/4816)
 s+=f'<rect x="{X0+BW-cw}" y="{BY}" width="{cw:.2f}" height="{BH}" fill="{ORANGE}"/>'
-s+=f'<text x="{X0+18}" y="{BY+30}" font-size="16" font-weight="600" fill="#ffffff">moving 16 GB of weights from memory</text>'
-s+=f'<text x="{X0+18}" y="{BY+52}" font-size="15" fill="#dbe8f8" font-family="{MONO}">4,800 µs  ·  99.7% of the step</text>'
+s+=f'<text x="{X0+18}" y="{BY+30}" font-size="16" font-weight="600" fill="#ffffff">weight-read lower bound at 3.35 TB/s peak</text>'
+s+=f'<text x="{X0+18}" y="{BY+52}" font-size="15" fill="#dbe8f8" font-family="{MONO}">16 GB ÷ 3.35 TB/s  ≈  4,800 µs</text>'
 
 # leader from the hairline to a callout
 LX=X0+BW-cw+1.5
 s+=f'<path d="M {LX} {BY+BH+6} L {LX} {BY+BH+38} L {LX-150} {BY+BH+38}" fill="none" stroke="{ORANGE}" stroke-width="2"/>'
 s+=f'<circle cx="{LX}" cy="{BY+BH+6}" r="3" fill="{ORANGE}"/>'
-s+=f'<text x="{LX-158}" y="{BY+BH+43}" font-size="15" font-weight="600" text-anchor="end" fill="{ORANGE}">doing the actual math: 16 µs</text>'
-s+=f'<text x="{LX-158}" y="{BY+BH+63}" font-size="13.5" text-anchor="end" fill="{INK2}">16 GFLOPs on a chip rated for 989 TFLOPS</text>'
+s+=f'<text x="{LX-158}" y="{BY+BH+43}" font-size="15" font-weight="600" text-anchor="end" fill="{ORANGE}">dense-compute lower bound: 16 µs</text>'
+s+=f'<text x="{LX-158}" y="{BY+BH+63}" font-size="13.5" text-anchor="end" fill="{INK2}">16 GFLOPs ÷ 989 TFLOP/s peak</text>'
 
 # the punchline block
 PY=272
 s+=f'<rect x="{X0}" y="{PY}" width="{BW}" height="1.5" fill="{RULE}"/>'
-s+=f'<text x="{X0}" y="{PY+40}" font-size="19" font-weight="600" fill="{INK}">The orange sliver is not a rendering artifact. That is the compute.</text>'
-s+=f'<text x="{X0}" y="{PY+68}" font-size="15" fill="{INK2}">Generating a token is a memory-movement problem wearing a matrix-multiplication costume.</text>'
-s+=f'<text x="{X0}" y="{PY+90}" font-size="15" fill="{INK2}">Every optimization in this series is a scheme to get more work out of that same 4.8 milliseconds.</text>'
-open("fig2-time-budget.svg","w").write(s+"</svg>")
+s+=f'<text x="{X0}" y="{PY+40}" font-size="19" font-weight="600" fill="{INK}">The peak resource imbalance is roughly 295:1.</text>'
+s+=f'<text x="{X0}" y="{PY+68}" font-size="15" fill="{INK2}">Real kernels overlap compute and memory and achieve neither peak; utilization must be measured.</text>'
+s+=f'<text x="{X0}" y="{PY+90}" font-size="15" fill="{INK2}">The roofline prediction: conventional batch-1 dense decode is bandwidth-bound.</text>'
+open("fig2-time-budget.svg", "w", encoding="utf-8").write(s+"</svg>")
 
 # ─────────────────────────────────────────────────────────────
 # FIG 3 — bandwidth ceilings across hardware
 # ─────────────────────────────────────────────────────────────
 ROWS_MARK=1
-rows=[("MacBook Air, M-series","~100 GB/s",6.3),
-      ("MacBook Pro, M3 Ultra","~819 GB/s",51.2),
+rows=[("MacBook Pro, M5","153 GB/s",9.6),
+      ("MacBook Pro, M5 Max","614 GB/s",38.4),
       ("RTX 4090","~1,008 GB/s",63.0),
       ("H100 SXM","3,350 GB/s",209.4)]
 W,H=1000,510
 s=head(W,H)
 s+=f'<text x="40" y="46" font-size="21" font-weight="600" fill="{INK}">One formula, four machines</text>'
-s+=f'<text x="40" y="72" font-size="15" fill="{INK2}">Predicted decode ceiling for an 8B model at BF16 (16 GB of weights), batch size 1 — memory bandwidth ÷ weight bytes.</text>'
+s+=f'<text x="40" y="72" font-size="15" fill="{INK2}">Idealized weight-bandwidth ceiling for an 8B model at BF16 (16 GB), batch size 1 — advertised bandwidth ÷ weight bytes.</text>'
 
 X0,TOP,ROWH,LW=40,118,68,250
 maxv=max(r[2] for r in rows); PW=W-X0-LW-150
@@ -103,8 +103,8 @@ for i,(name,bw,val) in enumerate(rows):
 
 FY=TOP+len(rows)*ROWH+16
 s+=f'<rect x="{X0}" y="{FY}" width="{W-2*X0}" height="1.5" fill="{RULE}"/>'
-s+=f'<text x="{X0}" y="{FY+36}" font-size="15" fill="{INK2}">These are ceilings, not benchmarks — no real engine beats them, and good ones get close.</text>'
-s+=f'<text x="{X0}" y="{FY+58}" font-size="15" fill="{INK2}">Quantize the same model to 4-bit and every number roughly quadruples, because you moved fewer bytes,</text>'
-s+=f'<text x="{X0}" y="{FY+80}" font-size="15" fill="{INK2}">not because you found more compute.</text>'
-open("fig3-bandwidth-ceilings.svg","w").write(s+"</svg>")
+s+=f'<text x="{X0}" y="{FY+36}" font-size="15" fill="{INK2}">These are weights-only peak-rate ceilings, not benchmarks or promised performance.</text>'
+s+=f'<text x="{X0}" y="{FY+58}" font-size="15" fill="{INK2}">Quantization reduces the weight term; kernels, dequantization, KV traffic, and overhead determine</text>'
+s+=f'<text x="{X0}" y="{FY+80}" font-size="15" fill="{INK2}">how much of that theoretical gain appears in a real measurement.</text>'
+open("fig3-bandwidth-ceilings.svg", "w", encoding="utf-8").write(s+"</svg>")
 print("svgs written")

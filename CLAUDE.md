@@ -7,12 +7,13 @@ Read this first. It is the handoff note for any new session.
 The knowledge base and writing home for a blog series on LLM inference, written by Sanket
 (@stp8954). Two tracks:
 
-- **Deep dives** — a 30-week curriculum, beginner → state of the art, ending by building a
+- **Deep dives** — a 30-installment curriculum, beginner → state of the art, ending by building a
   vLLM-style inference engine in Rust. Full plan: `planning/series-plan.md`.
 - **This Week in Inference** — a weekly news digest. Format and source list are in the plan.
 
 Related repos: **KVScope** (`stp8954/KVScope`) is the companion profiler and the series' measurement
-tool. `inference-from-scratch` will hold the per-week code and the Rust engine — **not yet created**.
+tool. `inference-from-scratch` holds the per-installment code and will contain the Rust engine; it is
+created and already contains the Week 1 implementation and benchmark files.
 
 ## Voice — read this before drafting anything
 
@@ -27,10 +28,12 @@ engine, a visible corrections changelog, and questions posed before answers. Ful
 This matters mechanically: **never state a number plainly unless it traces to a `[verified]` or
 `[sourced]` entry in `wiki/claims/`.** Hedge `[hearsay]`.
 
-## Current state (as of 2026-08-22)
+## Current state (as of 2026-08-24)
 
 **Done**
-- 30-week curriculum planned, including the Phase 6 Rust-engine arc (Weeks 25–30)
+- 30-installment curriculum planned, including the Phase 6 Rust-engine arc (Weeks 25–30)
+- Publication model revised for sustainability: weekly digest plus fortnightly deep dives during the
+  initial season, with checkpoint-gated acceleration only when the buffer and evidence workflow hold
 - Distribution strategy: X, Substack Notes, HN, plus Reddit/Discords/aggregators (`planning/distribution-strategy.md`)
 - Wiki bootstrapped and populated: 20 concept pages, 7 claims pages, 5 entity pages
 - **Both source books fully ingested** — Kiely, *Inference Engineering* (Baseten) and Vizuara's
@@ -44,7 +47,7 @@ This matters mechanically: **never state a number plainly unless it traces to a 
 1. **Naming.** KVScope's README says "The Inference Engineer"; the plan says "Inference from
    Scratch". Recommendation on the table: *The Inference Engineer* as the publication, *Inference
    from Scratch* as the flagship series inside it. Not yet decided.
-2. Substack publication not yet created; `inference-from-scratch` repo not yet created.
+2. Substack publication not yet created.
 
 **Settled decisions**
 - **Running example model (decided 2026-08-23): 8B at BF16 is the anchor; 70B appears only as a
@@ -55,6 +58,12 @@ This matters mechanically: **never state a number plainly unless it traces to a 
   **model-independent** (it equals the hardware's ops:byte ratio, ~295 on H100) — what 70B changes
   is capacity and absolute ceiling, not the ratio. Getting this wrong produced a real error in the
   Week 1 draft; see the changelog note in `wiki/log.md`.
+- **Benchmark contract (decided 2026-08-24):** every measured result records the pinned model,
+  precision, hardware/software environment, workload, sampling, warm-up/repetition policy, and raw
+  report. The ~210 tok/s H100 number is a theoretical weight-bandwidth ceiling until measured.
+- **KVScope dependency boundary (decided 2026-08-24):** Week 4 requires the small profiler/report MVP
+  defined in `planning/series-plan.md`; later backends and roadmap features do not block posts. A
+  compatible checked-in reference harness is the fallback.
 
 **Next actions**
 - Run the Week 1 code on real hardware (a Mac and a cloud GPU) and replace predicted tok/s with
@@ -67,12 +76,27 @@ This matters mechanically: **never state a number plainly unless it traces to a 
   `wiki/concepts/prefill-decode.md` — the `24Nd² + 4N²d` formula, the fact that Week 1's
   "2 FLOPs per parameter" is its N=1 case, and the `N = 6d` crossover (~24,600 tokens for an 8B)
   where attention FLOPs finally overtake the linear layers.
+- Build the pre-launch Rust/candle feasibility spike in `inference-from-scratch`: load the pinned
+  anchor checkpoint, perform cached decode, handle two variable-length sequences, and document
+  memory-layout or kernel limitations before publicly promising the detailed Weeks 25–30 scope.
+- Define and implement the Week 4 KVScope MVP report schema, including the benchmark-contract fields,
+  before building optional backends or dashboard work.
 - Housekeeping: a fine-grained GitHub PAT was shared in an earlier chat session and is unusable from
   Cowork (the git proxy blocks it). **It should be revoked** if that hasn't happened.
 
+## Resources
+
+Quick-reference external resources shaping the series:
+
+- **YALM walkthrough (Chan)** — https://andrewkchan.dev/posts/yalm.html. Practical GPU inference engine built from scratch in C++/CUDA. Shows the concrete engineering path from naive loops to 63.8 tok/s on Mistral-7B. Reference for Weeks 5–9 (framework survey) and Weeks 25–30 (Rust engine design). See `sources/2026-08-24-chan-yalm.md`.
+
+- **Inference Engineering (Kiely)** — Baseten Books 2026. Breadth-first practitioner's map covering runtime, infrastructure, and tooling. Ingested 2026-08-22; see `sources/2026-08-22-kiely-inference-engineering.md`.
+
+- **Definitive Workshop Guide (Vizuara)** — Ingested 2026-08-22; see `sources/2026-08-22-vizuara-workshop-guide.md`.
+
 ## How to work here
 
-**Ingesting a source** (paper, book, release notes, blog post): follow `WIKI_SCHEMA.md` exactly —
+**Ingesting a source** (paper, book, release notes, documentation, source/RFC, blog post): follow `WIKI_SCHEMA.md` exactly —
 create the `sources/` stub, update every relevant concept/entity/claims page, update `wiki/index.md`,
 append to `wiki/log.md`, commit as `ingest: <source title>`. Large PDFs: split them and read in
 20-page chunks; fanning subagents across chunks works well and keeps the main context clean.

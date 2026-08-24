@@ -10,7 +10,9 @@ Most newsletter authors promote with "new post 🧵👇". You have three assets 
 
 1. **Numbers nobody else publishes** — every deep dive produces original measurements (KVScope reports, napkin-math-vs-measured tables). Charts with *your own data* are the single most shareable object in technical X.
 2. **A tool** — KVScope gives you build-in-public content between posts: a new metric shipped, a surprising profile, a bug that taught you something.
-3. **A visible arc** — "we're building a vLLM-class engine in Rust by Week 30" is a serialized story people follow like a show. Every post is an episode, not an article.
+3. **A visible arc** — "we're building toward a small inference engine in Rust over 30 installments"
+   is a serialized story people follow like a show. Every post is an episode, not an article. Keep
+   the detailed capstone promise conditional on the pre-launch Rust/candle feasibility gate.
 
 Everything below is about converting these three into engagement.
 
@@ -18,15 +20,17 @@ Everything below is about converting these three into engagement.
 
 **The core loop (per deep dive):** don't post a link — post the *insight*, then let the link ride along.
 
-- **Tuesday (post day):** a 6–10 tweet thread that delivers the post's one "screenshot moment" in full — e.g., the weights÷bandwidth formula predicting a MacBook's and an H100's tok/s with the same equation, with the chart. The thread must be valuable *without clicking*. Last tweet: "full derivation + code: [link]". Threads that are complete in themselves get shared; threads that are teasers get ignored.
+- **Every other Tuesday (deep-dive day):** a 6–10 tweet thread that delivers the post's one "screenshot moment" in full — e.g., the weights÷bandwidth formula predicting a specified Mac's and an H100's tok/s with the same equation, with the chart. The thread must be valuable *without clicking*. Last tweet: "full derivation + code: [link]". Threads that are complete in themselves get shared; threads that are teasers get ignored.
 - **Thursday:** repackage one atom from the same post in a different format — the misconception tweet ("temperature=0 does not make your LLM deterministic in production — here's why"), a single chart, or a 30-second napkin calculation. One post = 3–4 X assets across the week.
 - **Weekend:** one build-in-public note — KVScope progress, a surprising profile result, next week's question as a teaser ("why is reading 1,000 tokens cheaper than writing 1?").
 
-**The reply strategy (this is where followers actually come from at zero audience):** for the first 2–3 months, spend more time replying than posting. Turn on notifications for the people your readers already follow — vLLM/SGLang maintainers, inference engineers at labs and inference providers (Together, Fireworks, Baseten, Modal), SemiAnalysis, GPU-poor/llama.cpp community figures. When they post about serving, reply within the hour with something substantive: a measurement, a correction, a "here's the napkin math on that." A good reply under a 500K-view post outperforms your own tweet by 100x at your current size. Your bio does the conversion: "Building an inference engine in public. Deep dive every Tuesday → [link]".
+**The reply strategy (this is where followers actually come from at zero audience):** for the first 2–3 months, spend more time replying than posting. Turn on notifications for the people your readers already follow — vLLM/SGLang maintainers, inference engineers at labs and inference providers (Together, Fireworks, Baseten, Modal), SemiAnalysis, GPU-poor/llama.cpp community figures. When they post about serving, reply within the hour with something substantive: a measurement, a correction, a "here's the napkin math on that." A good reply under a 500K-view post outperforms your own tweet by 100x at your current size. Your bio does the conversion: "Building an inference engine in public. Reproducible deep dives every other Tuesday → [link]".
 
 **Misconception-bait, used honestly:** each post's "things engineers get wrong" section is your engagement engine. Frame as confident, falsifiable claims — technical X cannot resist correcting or confirming. Never rage-bait; always resolve with the real explanation.
 
-**Cadence target:** 1 thread + 3–5 standalone tweets + 10–15 substantive replies per week. Consistency beats volume; don't tweet filler on quiet days.
+**Cadence target:** per two-week deep-dive cycle, 1 thread + 4–6 standalone posts and a sustainable
+number of substantive replies. The weekly digest can supply one additional timely post. Consistency
+beats volume; do not manufacture filler or let distribution consume the writing/measurement buffer.
 
 **What to skip:** engagement-farming formats ("agree?", polls-for-polls'-sake), AI-generated-looking image cards, and threads about threads. Your differentiation is that you're the person with real numbers.
 
@@ -47,13 +51,24 @@ HN is not a weekly channel — it's a spike machine, and you get a limited numbe
 - **Mechanics:** submit yourself (weekday morning US time), plain title without numbers-hype, and *stay in the thread all day* replying to every technical question — HN converts on author presence in comments. Never ask friends to upvote (ring detection buries you).
 - **Expectation-setting:** most submissions go nowhere; one front page = hundreds to low thousands of subscribers. Submit the strong candidates, ignore the misses, resubmit reworked material months later.
 
-## The weekly rhythm (all channels, ~4–5 hrs/wk)
+## The publishing rhythm (all channels, target ≤2–3 hrs/week averaged)
 
-Tuesday: deep dive publishes → X thread + restack with take on Notes + submit to two aggregator newsletters. Wednesday: reply day on X. Thursday: second X asset (misconception/chart) + 1–2 Notes. Friday/Monday: digest publishes → 2 quotable notes + digest one-liner on X. Weekend: build-in-public KVScope note. Reddit: 1–2 native posts/month when a finding has the right shape. HN: only when a post has front-page shape.
+Deep-dive Tuesday, every other week: publish → X thread + restack with take on Notes + submit to two
+aggregator newsletters. The following day: answer replies. Later in the cycle: one second asset
+(misconception/chart) and 1–2 Notes. Friday/Monday each week: digest publishes → up to two quotable
+notes + digest one-liner on X. Weekend build-in-public notes are optional and should come from work
+already done. Reddit: 1–2 native posts/month when a finding has the right shape. HN: only when a post
+has front-page shape. Track time during the first four installments and cut channel activity before
+cutting the evidence or post buffer.
 
-## Launch sequence (first 3 weeks)
+## Launch sequence (first 6–8 weeks)
 
-You launch with the buffer (Weeks 1–3 written), so: publish Week 1 → X thread same morning → HN submission next day (it's your strongest HN candidate; day-2 submission avoids splitting attention). Notes daily from one week *before* launch so the account isn't empty when traffic arrives. Pin a tweet/note that states the series premise and arc ("from a 50-line loop to a Rust inference engine in 30 weeks") — the arc, not the topic, is what makes people subscribe rather than just read.
+Launch only after Weeks 1–4 are finished, Weeks 5–6 have evidence/risk outlines, and the Rust/candle
+feasibility gate has passed. Publish Week 1 → X thread the same morning → HN submission the next day
+(day-2 submission avoids splitting attention). Seed Notes during the week before launch so the account
+isn't empty when traffic arrives. Pin a post that states the series premise and arc ("from a 50-line
+loop toward a small Rust inference engine, with every result reproducible")—the arc and evidence
+standard, not a fragile calendar promise, are what make people subscribe rather than just read.
 
 ## Measurement (check monthly, not daily)
 
