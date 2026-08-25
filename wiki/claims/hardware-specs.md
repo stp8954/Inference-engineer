@@ -22,3 +22,23 @@ Source key: Kiely = [Kiely, *Inference Engineering* (2026)](../../sources/2026-0
 - CPU vs GPU on a 4096² FP16 matmul: ~1 TFLOPS vs ~989 TFLOPS ≈ 1000×; 7B via llama.cpp on CPU ≈ 5 tok/s vs 200–500 tok/s per user on GPU. Transformers are ~95% matmul. [sourced] — Vizuara §6.2. Recorded 2026-08-22.
 - FA3 reaches ~85% of H100 peak FP16; naive PyTorch ~30–50%; hand-tuned cuBLAS 85–92%. [sourced] — Vizuara Ch 3/Ch 6. Recorded 2026-08-22.
 - Ridge point holds across generations: B200 raises bandwidth 2.4× and compute ~2.3× together, so the memory-bound regime is not fixed by new silicon. [sourced] — Vizuara §6.10. Recorded 2026-08-22.
+
+## Edge / consumer hardware — measured offload bandwidths
+
+These are **measured on deployed tensor shapes, not read off platform specifications**, which makes them
+more useful than PCIe theoretical maxima. `B_P` = host-to-device expert-transfer bandwidth over PCIe;
+`B_H` = effective bandwidth of the CPU-side MoE expert kernel. All [sourced] — FreeToken Table 1
+(see ../../sources/2026-08-25-yang-freetoken.md). Recorded 2026-08-25.
+
+| System | GPU (VRAM) | PCIe | B_P (GB/s) | B_H (GB/s) |
+|---|---|---|---|---|
+| 5090 server | RTX 5090 (32 GB) | 5.0 ×16 | 52.7 | 77.3 |
+| 4090 server | RTX 4090 (24 GB) | 4.0 ×16 | 25.1 | 63.2 |
+| 3090 server | RTX 3090 (24 GB) | 4.0 ×16 | 25.3 | 56.7 |
+| 5090 desktop | RTX 5090 (32 GB) | 5.0 ×16 | 49.0 | 53.8 |
+| 4060 laptop | RTX 4060 Laptop (8 GB) | 4.0 ×8 | 11.8 | 47.5 |
+| PRO 6000 | RTX PRO 6000 (96 GB) | 5.0 ×16 | 51.5 | 178 |
+
+- Read the ratio, not the columns: `B_H / B_P` runs ~1.1× (5090 desktop) to ~4× (4060 laptop, PRO 6000). That ratio is what decides how much of an expert miss should be computed on the CPU instead of transferred — see the `q⋆` policy in [decode-bandwidth-ceilings](decode-bandwidth-ceilings.md).
+- A consumer desktop's host memory is the weak link, not its GPU: two RTX 5090 systems with identical GPU silicon differ only in host, and the dual-channel DDR5 desktop shows `B_H` 53.8 vs the many-channel server's 77.3. [sourced] — FreeToken §5.3. Recorded 2026-08-25.
+- Consumer GPU install base cited as the motivation: >100M consumer machines with discrete GPUs; Steam reports >200M monthly active users with discrete NVIDIA GPUs in ~72% of surveyed systems. [sourced] — FreeToken §1 (citing Valve/GameDiscoverCo). Recorded 2026-08-25.

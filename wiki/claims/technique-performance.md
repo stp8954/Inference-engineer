@@ -31,3 +31,40 @@ Source key: Kiely = [Kiely, *Inference Engineering* (2026)](../../sources/2026-0
 - KV-cache-aware sticky routing cuts average TTFT 2–3× for multi-turn chat vs least-busy. [sourced] — Vizuara §18.3. Recorded 2026-08-22.
 - Cold start ≈ 4 min, ~140 s of it loading 140 GB of weights; warm pools cost ~20–30% extra GPUs. [sourced] — Vizuara §18.2. Recorded 2026-08-22.
 - Book's full-stack tally (Ch 7–15 multiplicative): naive PyTorch ~10 tok/s/GPU → production vLLM 2,000–5,000 tok/s/GPU ≈ **200–500×**, purely engineering. [sourced] — Vizuara §15.9, Ch 16 recap. Recorded 2026-08-22. *(Note: the Ch 24 capstone measures 55× on a single 8B configuration — the difference is batch size and baseline choice. Reconcile carefully before citing either.)*
+
+## The single-machine optimization ladder, measured (YALM, 2026)
+
+One implementation, one machine, every step measured — Mistral-7B-Instruct-v0.2 FP16 (~15 GB), RTX 4090
+(1,008 GB/s) and AMD EPYC 7702P (204.8 GB/s). All [sourced] — Chan, *YALM* (2026)
+(see ../../sources/2026-08-24-chan-yalm.md). Recorded 2026-08-25. This is the closest published analogue
+to the series' own Week 1 → Week 30 arc, and a useful sanity check on the Vizuara tallies above, which
+measure a different baseline.
+
+| Step | tok/s |
+|---|---|
+| Naive CPU | 0.6 |
+| + OpenMP on matmul | 4.2 |
+| + attention-head parallelism | 4.4 |
+| + F16C vectorized FP16 weights | 8.2–8.4 |
+| Naive GPU port | 2.9 |
+| + warp-stride matmul | 51.7 |
+| + kernel fusion | 54.1 |
+| + matmul coalescing | 56.1 |
+| + attention-mixing kernel redesign | 63.7 |
+| + FP16 KV cache (final) | 63.8 short / 58.8 long |
+
+- **Shape of the ladder, which matters more than the totals:** ~14× from CPU work, then a *regression* to 2.9 tok/s on the naive GPU port, then ~22× from GPU kernel work. The single largest jump (2.9 → 51.7, ~18×) is one change — giving each warp a strided slice of the matmul instead of one block per output element. Everything after it is single-digit percentages. [sourced] — Chan, *YALM* (2026). Recorded 2026-08-25.
+- Peer comparison on the same box: llama.cpp 61.0 tok/s GPU / 8.7 CPU; `calm` 66.0 GPU. A careful from-scratch implementation lands between them, and all three sit within ~10% of the weight-bandwidth ceiling. [sourced] — Chan, *YALM* (2026). Recorded 2026-08-25.
+
+## Edge MoE serving (FreeToken, 2026)
+
+All [sourced] — FreeToken §5 (see ../../sources/2026-08-25-yang-freetoken.md). Recorded 2026-08-25.
+Baselines are llama.cpp, Ollama, KTransformers and MoE-Infinity, with weight formats bit-exactly aligned.
+
+- Decode throughput on RTX 5090: **77–83 tok/s** on Qwen3.6-35B-A3B (BF16) and **22–25 tok/s** on DeepSeek-V4-Flash (284B total / 13B active, MXFP4) — **1.8–2.3×** and **1.5–1.9×** the strongest baseline per workload.
+- **Agentic stability is the real result.** FreeToken's decode rate stays within **12%** of its single-turn value across three agent workloads; KTransformers on DSV4-Flash has already lost **31%** by the second. Single-stream benchmarks systematically overstate baseline agentic performance — a methodological warning worth repeating in Week 4.
+- **Tail TTFT as an availability boundary, not a latency statistic.** Worst-turn TTFT stays below **44 s** in every cell; each baseline crosses 150 s somewhere (llama.cpp 232 s, Ollama 179 s, KTransformers 946 s). Real clients abandon first: OpenClaw ships a 120 s idle watchdog, Claude Code defaults to roughly a ten-minute request timeout.
+- Expert-cache locality at equal capacity (37% of the Qwen3.6 pool, 11% of DSV4-Flash's) — decode-time expert miss rate: **global LRU 16% / 39%**, KTransformers' prefill-updated placement 41% / 59%, llama.cpp's routing-blind static split 62% / 89%. Ordering holds at every capacity short of the full pool.
+- Prefill double-buffering ablation: each 8,192-token chunk completes in 1.19–1.22 s — exactly the time to stream the 64.4 GB expert pool once at 52.7 GB/s, so computation is fully hidden behind transfer. Disabling the second buffer costs **19% at 4K, 25% at 8K, 26% at 16K**, the penalty growing with prompt length. Prefill reaches 6.7K tok/s at 16K tokens.
+- Cross-hardware speedup over the strongest baseline (coding-agent workload): 1.3× on RTX 3090 and 4090, 1.9× on the 5090 server, 2.1× on the 5090 desktop, 1.8× on the 4060 laptop.
+- Capability results: an **8 GB RTX 4060 laptop on PCIe ×8 serves a 35B model at 39.3 tok/s** — 92% of the RTX 4090 rate, and above the 33 tok/s median decode speed of Codex in production traces. A single RTX PRO 6000 serves **GLM-5.2 (753B / 40B active, a 433 GB checkpoint) at 14.9 tok/s vs llama.cpp's 7.3** (2.0×) with bit-identical weights and comparable TTFT (7.5 s vs 7.8 s).

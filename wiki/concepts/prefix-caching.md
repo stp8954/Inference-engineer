@@ -9,6 +9,17 @@ Re-use KV cache across requests sharing a prefix → skip prefill on shared toke
 
 **Chunked prefill** is the scheduling half of the same chapter and solves head-of-line blocking: one 4,000-token prefill monopolizes a forward pass and spikes every other user's ITL (the book's example: 50 ms → 850 ms, a 17× spike). Slicing it into 512-token chunks interleaved with decodes keeps ITL flat at a small TTFT cost. Note the relationship to FlashAttention: chunked prefill is *scheduler-level* tiling, FlashAttention is *kernel-level* tiling — a 4,096-token prompt is 8 chunks × 8 SRAM tiles, and the two compose multiplicatively.
 
+**Agent context edits break prefix reuse — and that is now a first-class problem (FreeToken, 2026).**
+Classic prefix caching assumes the context is append-only: the prefix ends at the first non-matching
+token, so anything appended is free and anything *inserted or rewritten* invalidates everything after
+it. Agent loops violate that constantly — a tool result is spliced in mid-context, a thinking block is
+dropped or summarized, a scratchpad is rewritten — and each edit throws away the cache from the edit
+point onward even though the semantic content barely moved. FreeToken's answer is **semantic anchor
+checkpoints**: state is checkpointed at meaningful boundaries so an agentic edit resumes from the
+nearest anchor rather than re-prefilling the tail. This is the same instinct as the non-prefix KV
+re-use research already noted above (CacheBlend, LMCache), aimed specifically at agent workloads
+rather than general RAG. Worth watching as agent traffic becomes the dominant local-inference pattern.
+
 ## Key numbers
 - (pending: measure prefix-cache TTFT deltas with KVScope for Week 7)
 - Motivating scale: a 500-token system prompt × 10K users × 30 messages ≈ 150M redundant prefix tokens/day ≈ **1,875 GPU-hours/day** of identical work at ~45 ms per 500-token prefill on Llama-3-70B/H100. [sourced] — Vizuara §12.1.
@@ -23,6 +34,7 @@ Re-use KV cache across requests sharing a prefix → skip prefill on shared toke
 ## Sources
 - [Kiely, *Inference Engineering* (2026)](../../sources/2026-08-22-kiely-inference-engineering.md) — §5.3.1, §5.3.3.
 - [Vizuara, *Workshop Guide* (2026)](../../sources/2026-08-22-vizuara-workshop-guide.md) — Ch 12 (hashing/refcounting/eviction, chunked prefill, combined metrics table).
+- [Yang et al., *FreeToken* (2026)](../../sources/2026-08-25-yang-freetoken.md) — semantic anchor checkpoints for agentic context edits.
 
 ## Series mapping
 - Week 7, Week 29 (Rust implementation)

@@ -25,12 +25,32 @@ Kernel ecosystem (Kiely §4.1): cuBLAS/cuDNN are the stock primitives (GEMM ever
 
 Why tiling works (Vizuara Ch 6): a 64×64 FP16 tile is 8 KB, so it fits in an SM's 228 KB SRAM — FlashAttention keeps the N×N score matrix off HBM entirely, and FA3 reaches ~85% of H100 peak FP16 (the missing 15% is warp stalls, SRAM bank conflicts, compute/memory imbalance). One block per Q tile, grid = N/64 blocks, each tensor-core op one warp on a 16×16×16 MMA.
 
+**What writing the decode kernel by hand actually costs (Chan, YALM 2026).** The literature above
+describes finished kernels; this is the only source we have on the path to one, with a measurement at
+each step. Three findings transfer directly to the Rust arc:
+
+1. **Parallelization granularity dominates everything else.** The naive GPU port ran at 2.9 tok/s —
+   *slower than the optimized CPU version* — because it launched one block per output element. Giving
+   each warp a strided slice of the matmul instead took it to 51.7 tok/s in one change. Every
+   subsequent optimization combined was worth about 23%.
+2. **Coalescing writes, not just reads.** The original attention kernel partitioned poorly and lost
+   memory throughput on scattered writes. The redesign splits the sequence into chunks across multiple
+   blocks so that contiguous elements of the value matrix load together, and accumulates with
+   `atomicAdd` into *shared* memory rather than global — which also avoids subnormal-value loss.
+   Worth 56.1 → 63.7 tok/s.
+3. **Half-precision loads can silently disable compiler loop unrolling.** Switching to an FP16 KV cache
+   should have been a straight bandwidth win but was not: the compiler unrolled far less aggressively
+   over half-precision loads, costing ~75 µs. The fix was manual — unroll in 16-iteration batches,
+   prefetch into registers, and extract with a switch. A reminder that a "pure bandwidth" change can be
+   undone by codegen, and that you must measure rather than reason about it.
+
 ## Open questions
 - FlashAttention paper (Dao et al.) primary-source ingest for Week 12.
 
 ## Sources
 - [Kiely, *Inference Engineering* (2026)](../../sources/2026-08-22-kiely-inference-engineering.md) — §2.5.
 - [Vizuara, *Workshop Guide* (2026)](../../sources/2026-08-22-vizuara-workshop-guide.md) — Ch 6 (SRAM tiling budget), Ch 3 §3.12 (kernel efficiency ladder).
+- [Chan, *YALM* (2026)](../../sources/2026-08-24-chan-yalm.md) — hand-written decode kernels on an RTX 4090; measured step-by-step. See [claims/technique-performance.md](../claims/technique-performance.md) for the full ladder.
 
 ## Series mapping
 - Week 12

@@ -20,12 +20,27 @@ Two teaching beats fall out of this:
 1. **The Week 1 rule of thumb is the N=1 case.** At decode, 24d² per layer ≈ 2 × (12d² params per layer) — "2 FLOPs per parameter" isn't a separate fact, it's this formula with N=1. Deriving it in Week 2 retroactively justifies what Week 1 asserted.
 2. **When does attention actually dominate?** Set `4N²d = 24Nd²` → **N = 6d**. For an 8B model (d=4096) that's **~24,600 tokens**. Below that context length the linear layers dominate the FLOP budget, so "attention is quadratic" is true but misleading at typical context lengths — which dovetails with the §3.9 finding that decode-attention is compute-bound and the real bottleneck is weight reloading. [verified] — algebra.
 
+**MoE inverts the asymmetry in a second way (FreeToken §2.1–2.2).** The prefill/decode split is usually
+taught as compute-bound versus bandwidth-bound. For mixture-of-experts models there is a *sparsity*
+split layered on top of it, running in the opposite direction. At decode each token routes through only
+k of E experts, so the working set is genuinely sparse — but at prefill the **union** of routes across a
+long prompt covers most experts in every layer, so the expert working set goes effectively dense. The
+same model is sparse one token at a time and dense a prompt at a time.
+
+That has a sharp consequence for anything serving MoE from host memory: prefill has to stream nearly the
+whole expert pool regardless of sparsity, while decode has to serve a handful of scattered misses. They
+are not the same problem and do not have the same solution — FreeToken double-buffers whole layers for
+prefill (transfer-bound, hide compute behind it) and splits individual misses between PCIe and CPU
+execution for decode (latency-bound, hide transfer behind compute). Worth a section in Week 2, because
+it shows the prefill/decode frame generalizing past the dense case the series starts from.
+
 ## Open questions
 - KVScope trace for the Week 2 chart (TTFT vs. prompt length; per-token latency flat) — needs to be run.
 
 ## Sources
 - [Kiely, *Inference Engineering* (2026)](../../sources/2026-08-22-kiely-inference-engineering.md) — Ch 2 §2.4 (ops:byte, arithmetic intensity, roofline, worked attention example); Ch 1 §1.4 (TTFT from prefill, TPS from decode).
 - [Vizuara, *Workshop Guide* (2026)](../../sources/2026-08-22-vizuara-workshop-guide.md) — Ch 3 (roofline, AI derivations, three optimization directions: right/up/up-right).
+- [Yang et al., *FreeToken* (2026)](../../sources/2026-08-25-yang-freetoken.md) — §2.1–2.2, the MoE sparsity inversion between prefill and decode.
 
 ## Series mapping
 - Week 2 (primary), Week 1 (napkin math), Week 17 (disaggregation). Draft: [../../drafts/week-01-life-of-a-token.md](../../drafts/week-01-life-of-a-token.md)

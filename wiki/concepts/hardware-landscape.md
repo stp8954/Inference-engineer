@@ -9,15 +9,28 @@ What the series' Week 23 covers, seeded from Kiely Ch 3. NVIDIA generations (let
 
 **Spec-sheet literacy (§6.10)** — read any new GPU with six numbers: HBM bandwidth (roofline slope + ITL floor), per-precision tensor TFLOPS (the ceilings), SRAM/SM (tiling budget), SM count (parallelism and minimum batch to saturate), NVLink bandwidth (intra-node parallelism), and inter-node bandwidth (cross-node parallelism). Note that B200 raises bandwidth 2.4× and compute ~2.3× together, so **the ridge point stays roughly put across generations** — the memory-bound problem does not get solved by new silicon.
 
+**Consumer GPUs are a serving tier now, not just a dev box (FreeToken, 2026).** The local-inference
+line above — Apple unified memory for capacity, discrete GPUs for bandwidth — understates what
+changed once MoE models became the frontier default. On a single user's machine the sparsity holds
+completely, so the binding constraint moves from "does the checkpoint fit in VRAM" to "how often does
+a routed expert have to cross PCIe." That reframes an RTX-class card plus a large pool of host RAM as
+one heterogeneous platform rather than a small GPU with a fallback, and it puts 35B-to-753B models on
+hardware that cost a few thousand dollars. The consequence for Week 23: the interesting spec on a
+consumer box is no longer VRAM alone but the *ratio* of VRAM to host bandwidth, and PCIe generation
+becomes a first-order number rather than a footnote.
+
 ## Key numbers
 - See [claims/hardware-specs.md](../claims/hardware-specs.md) for the spec table.
+- Edge serving reach: 8 GB laptop GPUs through single workstation GPUs; 35B on laptops to 753B on one workstation GPU (NVIDIA RTX 30/40/50 series). [sourced] — FreeToken abstract (see ../entities/freetoken.md). Recorded 2026-08-25.
 
 ## Open questions
 - InferenceMAX/MLPerf cross-vendor numbers for Week 23 (independent of vendor claims).
+- `hardware-specs.md` carries no PCIe Gen4/Gen5 x16 bandwidth figures. Needed before the offload-regime arithmetic can be stated numerically anywhere.
 
 ## Sources
 - [Kiely, *Inference Engineering* (2026)](../../sources/2026-08-22-kiely-inference-engineering.md) — Ch 3 (§3.2–3.5).
 - [Vizuara, *Workshop Guide* (2026)](../../sources/2026-08-22-vizuara-workshop-guide.md) — Ch 6 (SM internals, memory hierarchy, warps/blocks/grids, NVLink vs IB, spec-sheet checklist).
+- [Yang et al., *FreeToken* (2026)](../../sources/2026-08-25-yang-freetoken.md) — consumer GPUs as an edge MoE serving tier.
 
 ## Series mapping
 - Week 23 (primary); MIG relevant to Week 24 economics.

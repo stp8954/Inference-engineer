@@ -32,6 +32,7 @@ Updated with every ingest. One line per page.
 - [tensorrt-llm](entities/tensorrt-llm.md) — NVIDIA's engine
 - [nvidia-dynamo](entities/nvidia-dynamo.md) — disaggregated serving orchestration
 - [kvscope](entities/kvscope.md) — the series' companion profiler (ours)
+- [freetoken](entities/freetoken.md) — edge-native MoE serving; frontier models on consumer GPUs
 
 ## Claims
 
@@ -46,3 +47,7 @@ Updated with every ingest. One line per page.
 
 - [2026-08-22 Kiely, Inference Engineering](../sources/2026-08-22-kiely-inference-engineering.md) — book, Ch 0–7 complete (pending: appendices only)
 - [2026-08-22 Vizuara, Workshop Guide](../sources/2026-08-22-vizuara-workshop-guide.md) — book, **complete** (Ch 0–26 + conclusion)
+- [2026-08-24 Apple MacBook Pro specifications](../sources/2026-08-24-apple-macbook-pro-specs.md) — vendor specs; M5/M5 Max unified-memory bandwidth
+- [2026-08-24 Chan, YALM](../sources/2026-08-24-chan-yalm.md) — blog; C++/CUDA engine on an RTX 4090 reaching ~95% of the weight-bandwidth ceiling
+- [2026-08-24 Maczan, tiny-vllm](../sources/2026-08-24-maczan-tiny-vllm.md) — repo + course; theory-first minimal C++/CUDA engine
+- [2026-08-25 Yang et al., FreeToken](../sources/2026-08-25-yang-freetoken.md) — paper + system, **complete**; edge-native MoE serving, the `q⋆` bandwidth-split policy
