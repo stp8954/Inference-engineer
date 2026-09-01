@@ -2,6 +2,10 @@
 
 Updated with every ingest. One line per page.
 
+## Reference
+
+- [glossary](glossary.md) — plain-language definitions of every term the series uses, with the week that owns each. Also the term list for the pre-publish first-use audit.
+
 ## Concepts
 
 - [prefill-decode](concepts/prefill-decode.md) — the two-phase workload; compute-bound vs. bandwidth-bound

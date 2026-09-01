@@ -1,6 +1,8 @@
 # LLM Inference Blog Series — Master Plan
 
-**Audience:** ML engineers who deploy and serve models — comfortable with PyTorch, CUDA-adjacent concepts, and systems thinking, but who want a rigorous ground-up treatment of inference.
+**Audience:** ML engineers who deploy and serve models — comfortable with PyTorch and with systems thinking, and wanting a rigorous ground-up treatment of inference.
+
+**They are not assumed to have the inference vocabulary.** This is the single easiest way to lose them, and the correction was prompted by the author's own experience: the terms that organize this field — arithmetic intensity, ridge point, roofline, bandwidth-bound, ops:byte — had to be looked up before the material made sense. A reader fluent in PyTorch training can be completely new to all of it. "Comfortable with CUDA-adjacent concepts" was in an earlier version of this line and is now removed, because it licensed exactly the assumption that "Beginner → SOTA" forbids. Where the two ever conflict, the beginner promise wins. See **Jargon discipline** under Voice.
 
 **Platform:** one Substack publication (email-first) with two sections: **Deep Dive** and
 **This Week in Inference**, so subscribers can opt into either or both.
@@ -211,6 +213,14 @@ Tuesday. Track actual hours for the first four installments. Move to weekly only
 only while the buffer and evidence quality remain intact.
 
 **Voice: learning in public, receipts over résumé.** The narrator is not a veteran of production serving — and the series never pretends otherwise. Authority comes from three things the reader can verify: derivations, runnable code, and KVScope measurements. Concretely: (a) first person and honest provenance — "I measured," "this surprised me," "I got this wrong last week," never "in my experience running large fleets"; (b) confidence calibrated to evidence — state verified math and reproduced measurements plainly, hedge only what's actually untested; (c) surprise as a narrative engine — the moment something didn't behave as predicted is the most engaging paragraph in any post; (d) a visible corrections policy — a changelog on each post, and public thanks when maintainers or readers correct something (a correction from a vLLM contributor is a trophy, not a failure); (e) questions posed before answers — walk the reader through the confusion you had, then resolve it. The 30-installment arc reinforces this: the reader is watching someone actually make the journey, which is why the Rust engine finale has real stakes.
+
+**Jargon discipline: derive, then name.** A term is never a premise. Introduce the *phenomenon* through arithmetic the reader has just watched happen, then attach the label at the end as a reward for following along — "you just divided 989 by 3.35; that number is the ridge point." This is not a style preference, it is the same principle as receipts over résumé: the series does not get to assume the vocabulary any more than it gets to assume the authority. Three working rules:
+
+1. **First use is a definition or a deferral, never a bare mention.** Either gloss the term in the sentence where it first appears, or say plainly that it means nothing yet and name the installment that owns it. A list of unexplained terms is acceptable *only* when explicitly flagged as such — "if those words mean nothing to you yet, good" — which converts a wall into a promise.
+2. **Do not deploy a term the series has already deferred.** Week 1 originally used "roofline model" as though established while its own closing paragraph promised the roofline model as Week 2's subject. If a later week owns it, earlier weeks describe the idea in plain language and skip the label.
+3. **Prefer deleting jargon to defining it.** The most common failure is explaining something well in plain English and then restating it in vocabulary — the restatement adds nothing and costs the reader. Check whether the plain version already did the work before writing the glossed one.
+
+**Enforcement:** a first-use audit before publishing. Take the term list from `wiki/glossary.md`, find each term's first occurrence in the draft, and confirm it is defined, deferred, or deliberately absent. Worth scripting once the glossary stabilizes.
 
 **Quality bar for deep dives:** every post has (a) at least one original diagram, (b) runnable code or
 a napkin-math calculation, and (c) links to the most authoritative source available for each claim:

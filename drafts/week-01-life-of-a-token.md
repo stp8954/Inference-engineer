@@ -6,11 +6,11 @@
 
 ---
 
-Type a prompt into a fast LLM service and a familiar pattern appears: the prompt is processed in one burst, then the answer streams out token by token. Why can reading a block of text feel fast while writing the continuation is irreducibly sequential?
+Type a prompt into a fast LLM service and a familiar pattern appears: the prompt is processed in one burst — the **prefill** — then the answer streams out one token at a time, each one a **decode** step. Why can reading a block of text feel fast while writing the continuation is irreducibly sequential?
 
 I used PyTorch for years before I could honestly answer that question — I could train and fine-tune models, but what happened *physically* on the GPU between two words of a streamed response was a black box. This post is the one I wish I'd read back then. We'll build the dumbest possible inference loop in ~50 lines of PyTorch, run it, and derive a one-line formula that predicts LLM generation speed on hardware from a MacBook to an H100 — out of two spec-sheet numbers and a single division. Whether the prediction survives contact with real silicon is Week 4's job, and I'll publish the misses along with the hits.
 
-That formula introduces the thesis of this whole series: **for conventional low-batch decode, moving data is often the binding constraint.** KV caches, paged attention, continuous batching, quantization, speculative decoding, and disaggregated serving attack different parts of the wider serving problem. But first, the machine itself.
+That formula introduces the thesis of this whole series: **for conventional low-batch decode, moving data is often the binding constraint.** KV caches, paged attention, continuous batching, quantization, speculative decoding, disaggregated serving — if those words mean nothing to you yet, good. Each one gets its own installment, none of them is a prerequisite for today, and every one of them is an attack on some part of the same problem. But first, the machine itself.
 
 ## The cast of characters
 
@@ -88,7 +88,10 @@ Run it. It works — this is a minimal autoregressive generator, with none of th
 streaming, batching, stop controls, or observability that would make it a server. It is also
 *catastrophically* slow, and slower per-token the longer the output gets. Note the `use_cache=False`:
 every step re-processes the entire sequence from scratch, so step 500 redoes all the work of steps
-1–499. Fixing exactly that wastefulness is Week 3 (the KV cache). This loop is our pedagogical
+1–499. Fixing that — by keeping each token's intermediate attention values around instead of
+recomputing them every step — is Week 3, and the thing you keep is called the **KV cache**. It shows
+up by name a few more times below; for now it is just "the results we throw away and recompute."
+This loop is our pedagogical
 baseline. The printed timing is only a demonstration; reproducible comparisons use the repository's
 benchmark script, which fixes the workload, warms up the device, synchronizes it, and reports raw
 results.
@@ -99,7 +102,7 @@ same; the hardware requirements are not.
 
 ## The napkin math that explains everything
 
-Now the payoff. Here's the question that cracked this whole topic open for me: when the model generates one token at batch size 1, what is the GPU actually doing? I assumed the answer was "a lot of matrix math." I was wrong in an interesting way.
+Now the payoff. Here's the question that cracked this whole topic open for me: when the model generates one token at batch size 1 — one request on the GPU, nothing else sharing the work — what is the GPU actually doing? I assumed the answer was "a lot of matrix math." I was wrong in an interesting way.
 
 For one conventional decode step through our dense 8B anchor, the GPU must use essentially every
 dense-layer weight. Those weights live in HBM, the GPU's main memory, and are far too large to remain
@@ -108,18 +111,22 @@ This statement is deliberately scoped: embedding lookups touch selected rows, Mo
 selected experts, and later techniques such as batching and speculative decoding change how much
 useful work one weight load can produce.
 
-An 8B-parameter model in BF16 is roughly 16 GB of weights. An H100 SXM's advertised peak HBM
-bandwidth is 3.35 TB/s. For standard one-token-at-a-time, batch-1 decode—without quantization or
-speculation—the idealized weight-bandwidth ceiling is:
+BF16 — bfloat16 — is the number format the weights are stored in, and it uses 16 bits, or 2 bytes, per
+number. So an 8B-parameter model occupies 8 billion × 2 bytes ≈ **16 GB**. That conversion is the whole
+trick of this section: what the memory system cares about is not how many parameters a model has but
+how many *bytes* they occupy. An H100 SXM's advertised peak HBM bandwidth is 3.35 TB/s. For standard
+one-token-at-a-time, batch-1 decode—without quantization or speculation—the idealized weight-bandwidth
+ceiling is:
 
 > **3,350 GB/s ÷ 16 GB ≈ 210 tokens/second** — a peak-rate upper bound, not a performance prediction.
 
-Meanwhile, how much *math* does the dense part of that token take? Each weight participates in
-roughly one multiply-add, so the familiar rule of thumb is 2 FLOPs per parameter, or about 16
-GFLOPs. (That approximation is doing real work here; in the next installment we derive it and find
-where it stops holding.) Against a dense BF16 peak of roughly 989 TFLOP/s, that gives a separate
-compute-time lower bound of about **16 microseconds**. The weight-read lower bound is about **4.8
-milliseconds**.
+Meanwhile, how much *math* does the dense part of that token take? A FLOP is one floating-point
+operation — a single multiply, or a single add. Each weight participates in roughly one multiply *and*
+one add, so the familiar rule of thumb is 2 FLOPs per parameter: about 16 billion of them, 16 GFLOPs,
+for our 8B. (That approximation is doing real work here; in the next installment we derive it and find
+where it stops holding.) Against a dense BF16 peak of roughly 989 TFLOP/s — 989 *trillion* of those
+operations every second — that gives a separate compute-time lower bound of about **16 microseconds**.
+The weight-read lower bound is about **4.8 milliseconds**.
 
 Those are not two phases of a measured timeline. Real kernels overlap memory movement with
 arithmetic, sustain neither advertised peak, and batch-1 matrix-vector operations use the compute
@@ -132,10 +139,20 @@ most of the H100's compute capacity.
 Run the same idealized arithmetic for a dense 70B at BF16 and you get 140 GB of weights, a ~42 ms
 weight-read lower bound, and a ~142 µs dense-compute lower bound. The imbalance is again **295×**.
 It has to be: in this simplified derivation, bytes and FLOPs both scale with parameter count, so the
-model size cancels. What's left is a property of the *chip*: 989 TFLOP/s ÷ 3.35 TB/s ≈ **295 FLOPs
-per byte**, the H100's peak ops:byte ratio. An operation with arithmetic intensity well below that
-ridge point is bandwidth-bound in the roofline model—and batch-1 dense decode is roughly one FLOP
-per weight byte at BF16.
+model size cancels.
+
+What's left is a property of the *chip*: 989 TFLOP/s ÷ 3.35 TB/s ≈ **295 FLOPs per byte**. Read that
+as a demand the hardware makes. To keep its arithmetic units busy, an H100 needs roughly 295
+floating-point operations performed on every byte it pulls out of memory. Batch-1 dense decode supplies
+about **one** — two bytes of weight arrive, two FLOPs happen, and the chip goes looking for the next
+weight.
+
+Both of those quantities have names, and you now have both of them. The FLOPs-per-byte a workload
+*supplies* is its **arithmetic intensity**. The ~295 the hardware *demands* is that chip's **ops:byte
+ratio** — its ridge point. When the first number sits far below the second, the work is
+**bandwidth-bound**: it finishes when the memory system is done, not when the math is done, and buying
+more arithmetic throughput cannot help. Plot supply against demand and you have drawn the **roofline
+model**, which is where the next installment starts.
 
 Within that simplified dense-model calculation, model size does not change the imbalance; it changes
 the capacity requirement and the absolute ceiling. A 70B model's roughly 140 GB of BF16 weights does
