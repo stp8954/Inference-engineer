@@ -1,54 +1,65 @@
 # The Life of a Token
 
-### Inference from Scratch #1 — What actually happens when an LLM generates a token
+### Inference from first principles #1 — What actually happens when an LLM generates a token
 
-*This is the first post in **Inference from Scratch** — me learning LLM inference in public, from a naive PyTorch loop toward a small serving engine in Rust. I'm not an inference veteran; the deal is that every claim here is derived, reproduced, or traced to an authoritative source, and when I get something wrong I'll correct it in the open. A new deep dive arrives every other Tuesday; a separate weekly digest, This Week in Inference, covers what changed in the field each week.*
+*This is the first post in a series that starts from a naive generation loop and ends in a small serving engine. I am learning this in public. Every claim is derived, reproduced, or traced to a source; when I get something wrong I will correct it here.*
+
+**Series contract (locked for this curriculum)**
+
+| | Pin |
+|---|---|
+| Model | `meta-llama/Llama-3.1-8B-Instruct` at BF16 (~8B dense parameters, ~16 GB of weights) |
+| Lab GPU | one cloud **H100 SXM 80GB** (advertised 3.35 TB/s HBM, ~989 TFLOP/s dense BF16) |
+| What “I measured” means | that box, that checkpoint, a pinned image, a checked-in harness |
+| What this post is | first principles + spec-sheet **ceilings**. Measured tok/s land in Week 4 |
+
+A 0.5B Qwen checkpoint appears in the code block so you can run the loop on a smaller GPU. It is a teaching toy. Every ceiling, figure, and later benchmark in the series is the 8B on the H100 unless a post says otherwise.
 
 ---
 
-Type a prompt into a fast LLM service and a familiar pattern appears: the prompt is processed in one burst — the **prefill** — then the answer streams out one token at a time, each one a **decode** step. Why can reading a block of text feel fast while writing the continuation is irreducibly sequential?
+Type a prompt into a fast LLM service and a familiar pattern appears: the prompt is processed in one burst — the **prefill** — then the answer streams out one token at a time, each one a **decode** step. Why can reading a block of text feel fast while writing the continuation is usually sequential?
 
-I used PyTorch for years before I could honestly answer that question — I could train and fine-tune models, but what happened *physically* on the GPU between two words of a streamed response was a black box. This post is the one I wish I'd read back then. We'll build the dumbest possible inference loop in ~50 lines of PyTorch, run it, and derive a one-line formula that predicts LLM generation speed on hardware from a MacBook to an H100 — out of two spec-sheet numbers and a single division. Whether the prediction survives contact with real silicon is Week 4's job, and I'll publish the misses along with the hits.
+I used PyTorch for years before I could honestly answer that. I could train and fine-tune models. What happened *physically* on the GPU between two words of a streamed response was a black box. This post is the one I wish I had read then.
 
-That formula introduces the thesis of this whole series: **for conventional low-batch decode, moving data is often the binding constraint.** KV caches, paged attention, continuous batching, quantization, speculative decoding, disaggregated serving — if those words mean nothing to you yet, good. Each one gets its own installment, none of them is a prerequisite for today, and every one of them is an attack on some part of the same problem. But first, the machine itself.
+We will do two things only:
+
+1. Write the dumbest possible generation loop — the thing every inference engine is wrapping.
+2. Derive a one-line **ceiling**: advertised HBM bandwidth divided by the bytes of weights. On our H100 pin that is about 210 tok/s for batch-1 BF16 decode. That is an upper bound from a spec sheet, not a speed I have measured.
+
+That ceiling is the thesis of the series: **for conventional low-batch decode, moving weights is often the binding constraint.** KV caches, paged attention, continuous batching, quantization, speculative decoding, disaggregated serving — if those words mean nothing yet, good. Each one is an attack on some part of the same problem. The last arc of the series is a small Rust engine that makes those attacks visible on the same H100, next to vLLM. A feasibility spike (load, cached decode, ragged batch, layout) decides the exact engine scope. Not a line-count slogan.
 
 ## The cast of characters
 
-Strip away the product surface and the token-generation path reduces to five conceptual components.
+Strip away the product surface and the token-generation path reduces to five parts.
 
-The **tokenizer** turns your string into a sequence of integer IDs from a fixed vocabulary. In this example it runs on the CPU before the timed model loop, and it is the last time the input is ordinary text.
+The **tokenizer** turns your string into integer IDs from a fixed vocabulary. In the loop below it runs on the CPU before the timed model call. After that the input is not text.
 
-The **embedding table** maps each token ID to a vector—one row lookup in a matrix of shape
-`[vocab_size, hidden_dim]`. Your prompt is now a stack of model-width vectors.
+The **embedding table** maps each token ID to a vector — one row lookup in a matrix of shape `[vocab_size, hidden_dim]`. The prompt is now a stack of model-width vectors.
 
-The **transformer stack** — many layers of attention and MLP blocks — is where essentially all the parameters and FLOPs live. Each layer mixes information across positions (attention) and across features (MLP), then writes an updated representation.
+The **transformer stack** — many layers of attention and MLP blocks — is where almost all the parameters and FLOPs live. Each layer mixes information across positions (attention) and across features (MLP), then writes an updated representation.
 
-The **LM head** projects the final hidden state of the *last* position back onto the vocabulary: one
-`[hidden_dim, vocab_size]` matmul producing one raw score per vocabulary token—the *logits*. Note
-what this means: however long your prompt, the model's entire output at each step is a single
-distribution over "what token comes next."
+The **LM head** projects the final hidden state of the *last* position onto the vocabulary: one `[hidden_dim, vocab_size]` matmul, one raw score per vocab token — the *logits*. However long the prompt, the necessary output of a decode step is a single distribution over “what token comes next.”
 
-The **sampler** turns that distribution into a choice — the only explicitly stochastic step in this loop. Temperature rescales the logits, top-k/top-p prune the tail, and a random draw picks the winner. The tokenizer decodes that token ID to a text fragment, which can then stream to your screen.
+The **sampler** turns that distribution into a choice — the only explicitly random step in this loop. Temperature rescales the logits, top-k / top-p prune the tail, a draw picks the winner. The tokenizer turns that ID back into a text fragment.
 
 ## The loop
 
-Here's the part that surprised me when I first traced through it: there is no separate
-sentence-level answer buffer and no standard decoder lookahead. At each step, the model acts like a
-function:
+There is no separate sentence-level answer buffer and no standard lookahead. At each step the model is a function:
 
 > **(all tokens so far) → (probability distribution over the next token)**
 
-Generation is just calling that function in a loop, appending each chosen token, and calling it again. A long answer requires one sequential decision per generated token, each conditioned on what was already written. Everything we call an "inference engine" — vLLM, SGLang, TensorRT-LLM — is orchestration wrapped around this loop.
+Generation is calling that function, appending the chosen token, and calling it again. A long answer is one sequential decision per token. vLLM, SGLang, TensorRT-LLM, and the engine this series will build are orchestration around this loop.
 
 ![Autoregressive decoding as a cycle: the model's output token becomes part of its next input](figures/fig1-the-loop.png)
 
-So let's write the loop with no orchestration at all.
+Here is the loop with no orchestration. The 0.5B checkpoint is so you can run it without 16 GB of VRAM. Swap the `MODEL` line for `meta-llama/Llama-3.1-8B-Instruct` when you are on the series box.
 
 ```python
 import time, torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-MODEL = "Qwen/Qwen2.5-0.5B-Instruct"   # swap in an 8B model if you have the VRAM
+# Teaching toy. Series pin is meta-llama/Llama-3.1-8B-Instruct at BF16 on an H100 SXM.
+MODEL = "Qwen/Qwen2.5-0.5B-Instruct"
 tok = AutoTokenizer.from_pretrained(MODEL)
 model = AutoModelForCausalLM.from_pretrained(
     MODEL, dtype=torch.bfloat16, device_map="auto"
@@ -64,13 +75,14 @@ def generate(prompt: str, max_new_tokens: int = 128,
     t0, n = time.perf_counter(), 0
     for _ in range(max_new_tokens):
         with torch.inference_mode():
-            logits = model(ids, use_cache=False).logits[0, -1]   # full re-forward, every step
+            # Full-sequence forward. Only the last logit is used.
+            logits = model(ids, use_cache=False).logits[0, -1]
         if temperature <= 0:
-            next_id = torch.argmax(logits).reshape(1)            # greedy decode
+            next_id = torch.argmax(logits).reshape(1)
         else:
             probs = torch.softmax(logits / temperature, dim=-1)
             sp, si = torch.sort(probs, descending=True)
-            keep = torch.cumsum(sp, 0) - sp < top_p              # nucleus filter
+            keep = torch.cumsum(sp, 0) - sp < top_p
             probs = torch.zeros_like(probs).scatter(0, si[keep], sp[keep])
             next_id = torch.multinomial(probs / probs.sum(), 1)
         ids = torch.cat([ids, next_id.unsqueeze(0)], dim=-1)
@@ -84,167 +96,72 @@ def generate(prompt: str, max_new_tokens: int = 128,
 print(generate("The capital of France is"))
 ```
 
-Run it. It works — this is a minimal autoregressive generator, with none of the request handling,
-streaming, batching, stop controls, or observability that would make it a server. It is also
-*catastrophically* slow, and slower per-token the longer the output gets. Note the `use_cache=False`:
-every step re-processes the entire sequence from scratch, so step 500 redoes all the work of steps
-1–499. Fixing that — by keeping each token's intermediate attention values around instead of
-recomputing them every step — is Week 3, and the thing you keep is called the **KV cache**. It shows
-up by name a few more times below; for now it is just "the results we throw away and recompute."
-This loop is our pedagogical
-baseline. The printed timing is only a demonstration; reproducible comparisons use the repository's
-benchmark script, which fixes the workload, warms up the device, synchronizes it, and reports raw
-results.
+This is a generator, not a server. No request handling, streaming, batching, stop sets, or metrics.
 
-The repository ships two reference configurations: **Qwen2.5-0.5B** as the accessible teaching
-model and the pinned **Llama-3.1-8B** checkpoint as the numerical anchor. The generation path is the
-same; the hardware requirements are not.
+It is also doing extra work the *story* of decode does not require. With `use_cache=False`, Hugging Face still runs every position in the sequence and produces logits at every index. We then take `[:, -1]`. Step 500 recomputes steps 1–499. That waste is the **KV cache** (Week 3): keep the attention keys and values instead of rebuilding them. Until then, treat KV as “the results this loop throws away.”
 
-## The napkin math that explains everything
+The printed tok/s is a demo. It does not synchronize the GPU and it includes sampling and `torch.cat`. Comparisons in this series use a harness that pins the 8B checkpoint, warms up, synchronizes, and reports the raw log — on the H100, starting Week 4.
 
-Now the payoff. Here's the question that cracked this whole topic open for me: when the model generates one token at batch size 1 — one request on the GPU, nothing else sharing the work — what is the GPU actually doing? I assumed the answer was "a lot of matrix math." I was wrong in an interesting way.
+## The napkin math that explains the constraint
 
-For one conventional decode step through our dense 8B anchor, the GPU must use essentially every
-dense-layer weight. Those weights live in HBM, the GPU's main memory, and are far too large to remain
-in its on-chip caches. At batch size 1 there is very little work with which to amortize reading them.
-This statement is deliberately scoped: embedding lookups touch selected rows, MoE models activate
-selected experts, and later techniques such as batching and speculative decoding change how much
-useful work one weight load can produce.
+When the 8B generates one token at batch size 1 on the H100 — one request, nothing else sharing the GPU — what is the chip actually doing? I assumed “a lot of matrix math.” That was wrong in a useful way.
 
-BF16 — bfloat16 — is the number format the weights are stored in, and it uses 16 bits, or 2 bytes, per
-number. So an 8B-parameter model occupies 8 billion × 2 bytes ≈ **16 GB**. That conversion is the whole
-trick of this section: what the memory system cares about is not how many parameters a model has but
-how many *bytes* they occupy. An H100 SXM's advertised peak HBM bandwidth is 3.35 TB/s. For standard
-one-token-at-a-time, batch-1 decode—without quantization or speculation—the idealized weight-bandwidth
-ceiling is:
+For one conventional decode step through a dense 8B, the GPU must use essentially every dense-layer weight. Those weights live in HBM. They do not stay in on-chip cache. At batch 1 there is almost no extra arithmetic with which to amortize reading them.
 
-> **3,350 GB/s ÷ 16 GB ≈ 210 tokens/second** — a peak-rate upper bound, not a performance prediction.
+Scope: embedding lookups touch selected rows. MoE models activate selected experts. Batching and speculative decoding change how much useful work one weight load produces. None of that is today.
 
-Meanwhile, how much *math* does the dense part of that token take? A FLOP is one floating-point
-operation — a single multiply, or a single add. Each weight participates in roughly one multiply *and*
-one add, so the familiar rule of thumb is 2 FLOPs per parameter: about 16 billion of them, 16 GFLOPs,
-for our 8B. (That approximation is doing real work here; in the next installment we derive it and find
-where it stops holding.) Against a dense BF16 peak of roughly 989 TFLOP/s — 989 *trillion* of those
-operations every second — that gives a separate compute-time lower bound of about **16 microseconds**.
-The weight-read lower bound is about **4.8 milliseconds**.
+BF16 stores each parameter in 2 bytes. An 8B-parameter dense model is about **16 GB** of weights (a little more on disk; the napkin uses 8e9 times 2 bytes). The H100 SXM advertises 3.35 TB/s of HBM bandwidth. For one-token-at-a-time, batch-1 decode, no quant, no speculation, the idealized **weight-bandwidth ceiling** is:
 
-Those are not two phases of a measured timeline. Real kernels overlap memory movement with
-arithmetic, sustain neither advertised peak, and batch-1 matrix-vector operations use the compute
-units poorly. The useful comparison is the **roughly 295:1 gap between the hardware's peak compute
-and bandwidth balance**. Conventional batch-1 decode offers too little arithmetic per byte to use
-most of the H100's compute capacity.
+> **3,350 GB/s ÷ 16 GB ≈ 210 tokens/second** — a peak-rate upper bound, not a measured speed.
+
+How much math is that token? Rule of thumb: 2 FLOPs per parameter (one multiply and one add). About 16 GFLOPs for the 8B. Against ~989 TFLOP/s of dense BF16 on the H100, the compute-time lower bound is about **16 microseconds**. The weight-read lower bound is about **4.8 milliseconds**.
+
+Those are not two phases of a timeline I measured. Real kernels overlap movement and math, hit neither advertised peak, and use the tensor cores poorly on batch-1 matrix-vector work. The useful comparison is the gap: **about 295:1 between the chip’s peak compute and its peak bandwidth balance**. Batch-1 dense decode does not supply enough math per byte to keep the H100 busy.
 
 ![Peak-rate lower bounds for one decode step: roughly 4,800 µs for the weight read versus 16 µs for dense arithmetic, explicitly not a measured timeline](figures/fig2-time-budget.png)
 
-Run the same idealized arithmetic for a dense 70B at BF16 and you get 140 GB of weights, a ~42 ms
-weight-read lower bound, and a ~142 µs dense-compute lower bound. The imbalance is again **295×**.
-It has to be: in this simplified derivation, bytes and FLOPs both scale with parameter count, so the
-model size cancels.
+The same arithmetic on a dense 70B at BF16: ~140 GB of weights, ~42 ms to read them at peak, ~142 µs of dense math. The imbalance is still **295×**. Bytes and FLOPs both scale with parameter count, so model size cancels. What remains is a property of the chip:
 
-What's left is a property of the *chip*: 989 TFLOP/s ÷ 3.35 TB/s ≈ **295 FLOPs per byte**. Read that
-as a demand the hardware makes. To keep its arithmetic units busy, an H100 needs roughly 295
-floating-point operations performed on every byte it pulls out of memory. Batch-1 dense decode supplies
-about **one** — two bytes of weight arrive, two FLOPs happen, and the chip goes looking for the next
-weight.
+**989 TFLOP/s ÷ 3.35 TB/s ≈ 295 FLOPs per byte.**
 
-Both of those quantities have names, and you now have both of them. The FLOPs-per-byte a workload
-*supplies* is its **arithmetic intensity**. The ~295 the hardware *demands* is that chip's **ops:byte
-ratio** — its ridge point. When the first number sits far below the second, the work is
-**bandwidth-bound**: it finishes when the memory system is done, not when the math is done, and buying
-more arithmetic throughput cannot help. Plot supply against demand and you have drawn the **roofline
-model**, which is where the next installment starts.
+That is the H100’s ridge point — the ops:byte ratio it wants. Batch-1 dense decode supplies about **one** (two bytes of weight, two FLOPs). The FLOPs-per-byte a workload supplies is its **arithmetic intensity**. When intensity sits far below the ridge, the work is **bandwidth-bound**: it finishes when the memory system is done. Buying more FLOPs does not help. That plot is the **roofline**, which is Week 2.
 
-Within that simplified dense-model calculation, model size does not change the imbalance; it changes
-the capacity requirement and the absolute ceiling. A 70B model's roughly 140 GB of BF16 weights does
-not fit on one 80 GB H100, and one H100's worth of peak bandwidth would imply only about 24 tok/s.
-That is part of the motivation for splitting large models across GPUs (Week 15). The rest of the
-series examines how real systems shrink, avoid, amortize, or relocate different kinds of data
-movement—and where compute or communication becomes the next bottleneck.
+Model size does not change the imbalance in this simplified picture. It changes capacity and the absolute ceiling. 140 GB of 70B BF16 weights do not fit on one 80 GB H100. One H100’s peak bandwidth would imply only about 24 tok/s even if they did. That is part of why large models get split across GPUs (Week 15).
 
-This one formula — **weights ÷ bandwidth** — travels remarkably well:
+The same formula on other advertised bandwidths is just the formula. It is not the lab:
 
-![Idealized weight-bandwidth ceilings for an 8B BF16 model using advertised peak bandwidth across two MacBook Pro configurations, an RTX 4090, and an H100](figures/fig3-bandwidth-ceilings.png)
+![Idealized weight-bandwidth ceilings for an 8B BF16 model using advertised peak bandwidth](figures/fig3-bandwidth-ceilings.png)
 
-- **Two current MacBook Pro examples:** Apple lists 153 GB/s for the base M5 and 614 GB/s for the
-  highest-bandwidth M5 Max configuration. The formula gives idealized BF16 ceilings of roughly 10 and
-  38 tok/s respectively, provided the selected unified-memory capacity can hold the weights plus
-  runtime and KV state. A 4-bit representation shrinks the weight term substantially, but real speedup
-  also depends on the quantized kernels and dequantization overhead. These are predictions from
-  [Apple's specifications](https://www.apple.com/macbook-pro/specs/), not my measurements.
-- **H100 serving one conventional batch-1 stream:** the same calculation gives an idealized
-  ~210 tok/s ceiling from [NVIDIA's 3.35 TB/s specification](https://www.nvidia.com/en-us/data-center/h100/).
-- **The riddle from the top:** prefill processes the prompt tokens together, which creates much more
-  opportunity to reuse weights and raise arithmetic intensity. Whether a particular prefill is
-  actually compute-bound depends on sequence length, batch, model, kernels, and hardware. Decode must
-  perform another sequential step for every output token and, at low batch, commonly remains
-  bandwidth-bound. That conditional asymmetry is the next installment.
+- **H100 SXM (the lab pin):** 3.35 TB/s → ~210 tok/s ceiling. [NVIDIA H100 spec](https://www.nvidia.com/en-us/data-center/h100/).
+- **RTX 4090, for scale:** ~1.0 TB/s → ~63 tok/s ceiling on the same 16 GB of weights. Spec-sheet only.
+- **A laptop, for scale:** Apple lists 153 GB/s (base M5) and 614 GB/s (top M5 Max). That is ~10 and ~38 tok/s *if* unified memory can hold ~16 GB of weights plus runtime and KV. A 16 GB SKU cannot. These are not measurements and this series will not use a Mac as a lab.
 
-And notice the opportunity hiding in the arithmetic: a batch can reuse each loaded weight across
-multiple sequences. The weight-read term is amortized over more useful tokens, while activation and
-KV traffic, arithmetic, and scheduling work still grow with the batch. Step time is not fixed, but
-throughput can rise dramatically until compute or another resource becomes the bottleneck. Weeks
-5–8 cover the machinery that makes this dynamic batching practical.
+Prefill is the other half of the opening riddle. The prompt tokens can be processed together, so the same weights get reused across many positions and arithmetic intensity can rise. Whether a given prefill is compute-bound depends on length, batch, kernels, and the chip. Low-batch decode usually does not get that reuse. Week 2.
+
+A batch is the other lever: load the weights once, use them on several sequences. Throughput can rise until compute or something else becomes the limit. Weeks 5–8.
 
 ## Four things I had wrong about this loop
 
-**"The decoder has a finished answer waiting."** Standard autoregressive decoding does not keep a
-sentence-level output buffer or revise future tokens: it commits one token at a time. That is an
-implementation claim, not a claim about what internal representations may encode. (The interesting
-wrinkle, speculative decoding, *guesses* ahead and verifies; Week 16.)
+**“The decoder has a finished answer waiting.”** Standard autoregressive decoding commits one token at a time. It does not keep a sentence buffer or revise the future. Speculative decoding *guesses* ahead and checks; that is Week 16.
 
-**"Longer answers are slower only because the questions are harder."** Every additional token adds
-another sequential decode step, regardless of whether it contains a breakthrough or boilerplate.
-The per-token cost is not perfectly constant—attention and KV traffic grow with context, and batching
-state changes—but output length remains a first-order cost driver. That is why long reasoning traces
-changed inference economics (Week 20).
+**“Longer answers are slower only because the questions are harder.”** Every extra token is another sequential decode step. Per-token cost is not constant — KV traffic grows with filled context — but output length is a first-order cost. That is why long reasoning traces changed the economics (Week 20).
 
-**"Generation is slow because the GPU lacks arithmetic throughput."** The roofline comparison points
-the other way: conventional batch-1 decode exposes far less arithmetic per byte than an H100 needs to
-use its peak compute capacity. The exact utilization is a measurement, not something this napkin math
-can supply. This was the single biggest update to my mental model—and I took it seriously only after
-two independent derivations reached the same resource imbalance.
+**“Generation is slow because the GPU lacks FLOPs.”** The ridge comparison points the other way for batch-1 dense decode on an H100. Exact utilization is a measurement. I will not state one until Week 4.
 
-**"Removing sampling randomness guarantees bitwise reproducibility."** Greedy decoding removes the
-explicit random draw, but a production stack can still use nondeterministic kernels or change
-floating-point reduction order with batching and kernel selection. I have not yet reproduced the
-batch-companion effect; that needs the serving setup from Week 5, so treat it as a sourced warning
-rather than one of my measurements.
+**“Greedy decoding is bitwise reproducible.”** Greedy removes the explicit random draw. Production stacks can still change reduction order with kernels and batching. I have not reproduced that yet.
 
 ## Where this series goes
 
-We're deliberately ignoring three enormous things today: the re-computation waste in our loop (**KV cache**, Week 3), the fact that we served exactly one request (**batching**, Week 5 — the single highest-leverage idea in serving), and everything about kernels, quantization, parallelism, and scale (Phases 3–5). We'll also build the measurement harness this series will use for every benchmark (Week 4).
+Today we ignore three things on purpose: the recompute waste (**KV cache**, Week 3), serving more than one request (**batching**, Week 5), and kernels / quant / parallelism. Week 4 is the harness on the H100: same 8B, same image, warm-up, sync, raw log. After that, “I measured” has a pin.
 
-And it all converges somewhere concrete: the final arc is aimed at a small inference engine in Rust,
-benchmarked against both today's naive loop and vLLM. Before publishing that detailed build promise,
-I'm proving the model-loading, cached-decoding, variable-length batching, and memory-layout path in a
-feasibility spike. The outcome of that work—not a line-count slogan—will determine the exact scope.
+The last arc is a small Rust engine on that same box, compared to this loop and to vLLM. The spike has to load the 8B, do cached decode, take a ragged batch, and print the same metrics the posts use. Until that runs, the engine is a destination, not a product announcement.
 
-**Next installment:** *Prefill vs. decode — why reading and writing stress the hardware differently.*
-The two-phase workload hiding inside every request, the roofline model, and the variables that move
-each phase between bandwidth- and compute-bound regimes.
+**Next:** *Prefill vs decode — why reading and writing stress the H100 differently.*
 
-**Where the numbers came from.** The peak-rate lower bounds use official hardware specifications
-(H100 SXM: 3.35 TB/s HBM and roughly 989 TFLOP/s dense BF16; current MacBook Pro bandwidths linked
-above) and are cross-checked against two 2026 books that reach the same roofline conclusion by
-different routes. Philip Kiely's *Inference Engineering* (Baseten) works through an H100 ops:byte
-ridge point of roughly 295; Vizuara's *Inference Engineering: The Definitive Workshop Guide* derives
-arithmetic intensity of roughly one for dense batch-1 decode. The ratio compares hardware resource
-ceilings. It is not a measured utilization percentage.
+**Where these numbers came from.** H100 SXM 3.35 TB/s and ~989 TFLOP/s dense BF16 are vendor specs. The ~210 tok/s and ~295 ops:byte figures are arithmetic on those specs. Philip Kiely’s *Inference Engineering* (Baseten) works the same H100 ridge; Vizuara’s workshop guide derives intensity ≈ 1 for dense batch-1 decode. I have not yet run the 8B on an H100.
 
-Three caveats matter. First, advertised bandwidth and compute are ceilings; achieved rates are lower.
-Second, kernels overlap memory movement and arithmetic, so the two lower bounds cannot be pasted
-together as a literal timeline. Third, KV reads, activations, sampling, framework overhead, and—in a
-distributed deployment—communication add work that the weights-only formula omits. That is exactly
-why the formula is useful as a falsifiable ceiling rather than a promised speed.
+Three caveats. Advertised peaks are not achieved peaks. Kernels overlap, so 4.8 ms and 16 µs are not a stacked timeline. KV, activations, sampling, framework overhead, and later communication are missing from weights ÷ bandwidth. That is why it is a ceiling you can beat or miss in Week 4, not a promised tok/s.
 
-Where I've measured something myself I say so; where I'm standing on someone else's arithmetic, this is the someone else.
+**Changelog.** 2026-09-05 — Locked series model to Llama-3.1-8B-Instruct BF16 and lab GPU to cloud H100 SXM. Ceilings only; Mac/4090 left as formula examples. Naive loop now states that all positions are recomputed. Dropped the weekly-digest and subscribe promises until those exist.
 
-**Changelog.** Nothing yet. Corrections land here with credit — if you spot an error, you'll be named.
-
-*Code for this post—including `napkin.py` and the synchronized, warm-started cached benchmark used to
-test the ceiling—is in the
-[companion repo](https://github.com/stp8954/inference-from-scratch/tree/main/week-01-life-of-a-token).
-Run `bench_decode.py --cache` on your hardware and tell me how far below the ceiling it lands; I'll
-publish a reader-submitted table with the exact configurations. If you spot an error, say so—corrections
-get credited in the changelog. And if you want to learn this alongside me, subscribe: one reproducible
-deep dive every other Tuesday, from scratch to the state of the art.*
+*Companion code: [inference-from-scratch / week-01](https://github.com/stp8954/inference-from-scratch/tree/main/week-01-life-of-a-token). If that path 404s, the listing in this repo is the source of truth until the companion is public.*
