@@ -114,19 +114,19 @@ BF16 stores each parameter in 2 bytes. An 8B-parameter dense model is about **16
 
 > **3,350 GB/s ÷ 16 GB ≈ 210 tokens/second** — a peak-rate upper bound, not a measured speed.
 
-How much math is that token? Rule of thumb: 2 FLOPs per parameter (one multiply and one add). About 16 GFLOPs for the 8B. Against ~989 TFLOP/s of dense BF16 on the H100, the compute-time lower bound is about **16 microseconds**. The weight-read lower bound is about **4.8 milliseconds**.
+How much math is that token? Rule of thumb: 2 FLOPs per parameter (one multiply and one add). About 16 GFLOPs for the 8B. Against ~989 TFLOP/s of dense BF16 on the H100, the compute-only ceiling is about **62,000 tok/s**. The weight-bandwidth ceiling is **~210 tok/s**. Same gap, same units.
 
 Those are not two phases of a timeline I measured. Real kernels overlap movement and math, hit neither advertised peak, and use the tensor cores poorly on batch-1 matrix-vector work. The useful comparison is the gap: **about 295:1 between the chip’s peak compute and its peak bandwidth balance**. Batch-1 dense decode does not supply enough math per byte to keep the H100 busy.
 
 ![Peak-rate lower bounds for one decode step: roughly 4,800 µs for the weight read versus 16 µs for dense arithmetic, explicitly not a measured timeline](figures/fig2-time-budget.png)
 
-The same arithmetic on a dense 70B at BF16: ~140 GB of weights, ~42 ms to read them at peak, ~142 µs of dense math. The imbalance is still **295×**. Bytes and FLOPs both scale with parameter count, so model size cancels. What remains is a property of the chip:
+The same arithmetic on a dense 70B at BF16: ~140 GB of weights → a bandwidth ceiling of **~24 tok/s** on one H100, versus a compute-only ceiling of **~7,000 tok/s**. The imbalance is still **295×**. Bytes and FLOPs both scale with parameter count, so model size cancels. What remains is a property of the chip:
 
 **989 TFLOP/s ÷ 3.35 TB/s ≈ 295 FLOPs per byte.**
 
 That is the H100’s ridge point — the ops:byte ratio it wants. Batch-1 dense decode supplies about **one** (two bytes of weight, two FLOPs). The FLOPs-per-byte a workload supplies is its **arithmetic intensity**. When intensity sits far below the ridge, the work is **bandwidth-bound**: it finishes when the memory system is done. Buying more FLOPs does not help. That plot is the **roofline**, which comes later.
 
-Model size does not change the imbalance in this simplified picture. It changes capacity and the absolute ceiling. 140 GB of 70B BF16 weights do not fit on one 80 GB H100. One H100’s peak bandwidth would imply only about 24 tok/s even if they did. That is part of why large models get split across GPUs — later.
+Model size does not change the imbalance in this simplified picture. It changes capacity and the absolute ceiling. 140 GB of 70B BF16 weights do not fit on one 80 GB H100. The ~24 tok/s number above is the bandwidth story *if they did*. That is part of why large models get split across GPUs — later.
 
 The same formula on other advertised bandwidths is just the formula. It is not the lab:
 
@@ -160,8 +160,8 @@ The last arc is a small Rust engine on that same box, compared to this loop and 
 
 **Where these numbers came from.** H100 SXM 3.35 TB/s and ~989 TFLOP/s dense BF16 are vendor specs. The ~210 tok/s and ~295 ops:byte figures are arithmetic on those specs. Philip Kiely’s *Inference Engineering* (Baseten) works the same H100 ridge; Vizuara’s workshop guide derives intensity ≈ 1 for dense batch-1 decode. I have not yet run the 8B on an H100.
 
-Three caveats. Advertised peaks are not achieved peaks. Kernels overlap, so 4.8 ms and 16 µs are not a stacked timeline. KV, activations, sampling, framework overhead, and later communication are missing from weights ÷ bandwidth. That is why it is a ceiling you can beat or miss later, not a promised tok/s.
+Three caveats. Advertised peaks are not achieved peaks. Kernels overlap, so the compute-only and bandwidth-only ceilings are not a stacked timeline. KV, activations, sampling, framework overhead, and later communication are missing from weights ÷ bandwidth. That is why it is a ceiling you can beat or miss later, not a promised tok/s.
 
-**Changelog.** 2026-09-05 — Locked series model to Llama-3.1-8B-Instruct BF16 and lab GPU to cloud H100 SXM. Ceilings only; Mac/4090 left as formula examples. Naive loop now states that all positions are recomputed. Dropped week-number forward pointers; later posts stay unnamed. Dropped the weekly-digest and subscribe promises until those exist.
+**Changelog.** 2026-09-05 — Locked series model to Llama-3.1-8B-Instruct BF16 and lab GPU to cloud H100 SXM. Ceilings only; Mac/4090 left as formula examples. Naive loop now states that all positions are recomputed. Dropped week-number forward pointers; later posts stay unnamed. 70B comparison restated in tok/s (~24 vs ~7,000).
 
 *Companion code: [inference-from-scratch / week-01](https://github.com/stp8954/inference-from-scratch/tree/main/week-01-life-of-a-token). If that path 404s, the listing in this repo is the source of truth until the companion is public.*
