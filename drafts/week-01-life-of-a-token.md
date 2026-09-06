@@ -124,7 +124,7 @@ The same arithmetic on a dense 70B at BF16: ~140 GB of weights → a bandwidth c
 
 **989 TFLOP/s ÷ 3.35 TB/s ≈ 295 FLOPs per byte.**
 
-That is the H100’s ridge point — the ops:byte ratio it wants. Batch-1 dense decode supplies about **one** (two bytes of weight, two FLOPs). The FLOPs-per-byte a workload supplies is its **arithmetic intensity**. When intensity sits far below the ridge, the work is **bandwidth-bound**: it finishes when the memory system is done. Buying more FLOPs does not help. That plot is the **roofline**, which comes later.
+Read that as: the H100 can do about 295 math operations in the time it takes to fetch one byte. Batch-1 decode does about **one** — two bytes of a weight arrive, two FLOPs happen. The chip is waiting on memory, not on math. A faster ALU would not raise the 210 tok/s ceiling. (The picture of “math per byte vs what the chip wants” is a **roofline**. We will draw it later.)
 
 Model size does not change the imbalance in this simplified picture. It changes capacity and the absolute ceiling. 140 GB of 70B BF16 weights do not fit on one 80 GB H100. The ~24 tok/s number above is the bandwidth story *if they did*. That is part of why large models get split across GPUs — later.
 
@@ -136,7 +136,7 @@ The same formula on other advertised bandwidths is just the formula. It is not t
 - **RTX 4090, for scale:** ~1.0 TB/s → ~63 tok/s ceiling on the same 16 GB of weights. Spec-sheet only.
 - **A laptop, for scale:** Apple lists 153 GB/s (base M5) and 614 GB/s (top M5 Max). That is ~10 and ~38 tok/s *if* unified memory can hold ~16 GB of weights plus runtime and KV. A 16 GB SKU cannot. These are not measurements and this series will not use a Mac as a lab.
 
-Prefill is the other half of the opening riddle. The prompt tokens can be processed together, so the same weights get reused across many positions and arithmetic intensity can rise. Whether a given prefill is compute-bound depends on length, batch, kernels, and the chip. Low-batch decode usually does not get that reuse. Later in the series.
+Prefill is the other half of the opening riddle. The prompt tokens can be processed together, so the same weights get reused across many positions and you get more math per byte loaded. Whether a given prefill is limited by compute depends on length, batch, kernels, and the chip. Low-batch decode usually does not get that reuse. Later in the series.
 
 A batch is the other lever: load the weights once, use them on several sequences. Throughput can rise until compute or something else becomes the limit. Later.
 
@@ -146,7 +146,7 @@ A batch is the other lever: load the weights once, use them on several sequences
 
 **“Longer answers are slower only because the questions are harder.”** Every extra token is another sequential decode step. Per-token cost is not constant — KV traffic grows with filled context — but output length is a first-order cost. That is why long reasoning traces changed the economics.
 
-**“Generation is slow because the GPU lacks FLOPs.”** The ridge comparison points the other way for batch-1 dense decode on an H100. Exact utilization is a measurement. I will not state one until I have run the harness.
+**“Generation is slow because the GPU lacks FLOPs.”** The comparison above points the other way for batch-1 dense decode on an H100. Exact utilization is a measurement. I will not state one until I have run the harness.
 
 **“Greedy decoding is bitwise reproducible.”** Greedy removes the explicit random draw. Production stacks can still change reduction order with kernels and batching. I have not reproduced that yet.
 
@@ -162,6 +162,6 @@ The last arc is a small Rust engine on that same box, compared to this loop and 
 
 Three caveats. Advertised peaks are not achieved peaks. Kernels overlap, so the compute-only and bandwidth-only ceilings are not a stacked timeline. KV, activations, sampling, framework overhead, and later communication are missing from weights ÷ bandwidth. That is why it is a ceiling you can beat or miss later, not a promised tok/s.
 
-**Changelog.** 2026-09-05 — Locked series model to Llama-3.1-8B-Instruct BF16 and lab GPU to cloud H100 SXM. Ceilings only; Mac/4090 left as formula examples. Naive loop now states that all positions are recomputed. Dropped week-number forward pointers; later posts stay unnamed. 70B comparison restated in tok/s (~24 vs ~7,000).
+**Changelog.** 2026-09-05 — Locked series model to Llama-3.1-8B-Instruct BF16 and lab GPU to cloud H100 SXM. Ceilings only; Mac/4090 left as formula examples. Naive loop now states that all positions are recomputed. Dropped week-number forward pointers; later posts stay unnamed. 70B comparison restated in tok/s (~24 vs ~7,000). Simplified the 295 FLOP/byte paragraph (no ridge / intensity / bandwidth-bound stack).
 
 *Companion code: [inference-from-scratch / week-01](https://github.com/stp8954/inference-from-scratch/tree/main/week-01-life-of-a-token). If that path 404s, the listing in this repo is the source of truth until the companion is public.*
